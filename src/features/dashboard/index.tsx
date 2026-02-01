@@ -1,6 +1,8 @@
+import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Activity, Wifi, WifiOff } from "lucide-react";
 import { useSystemStats } from "./hooks/useSystemStats";
+import { useSidecarStatus } from "./hooks/useSidecarStatus";
 import {
   CpuCard,
   RamCard,
@@ -8,6 +10,7 @@ import {
   SystemInfoCard,
   TopProcessesCard,
   PerformanceChart,
+  SidecarWarning,
 } from "./components";
 
 /**
@@ -16,6 +19,12 @@ import {
  */
 export function Dashboard() {
   const { stats, history, isConnected } = useSystemStats();
+  const { status: sidecarStatus, message: sidecarMessage, showWarning } = useSidecarStatus();
+  const [warningDismissed, setWarningDismissed] = useState(false);
+
+  const handleDismissWarning = useCallback(() => {
+    setWarningDismissed(true);
+  }, []);
 
   return (
     <div className="space-y-4 p-4">
@@ -41,6 +50,14 @@ export function Dashboard() {
           )}
         </div>
       </motion.div>
+
+      {/* Sidecar Warning Banner */}
+      <SidecarWarning
+        status={sidecarStatus}
+        message={sidecarMessage}
+        show={showWarning && !warningDismissed}
+        onDismiss={handleDismissWarning}
+      />
 
       {/* Top Row: Hardware Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

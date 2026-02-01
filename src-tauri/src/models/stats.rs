@@ -33,7 +33,9 @@ pub struct CpuStats {
     pub cores: usize,
     pub logical_cores: usize,
     pub per_core_usage: Vec<f32>,
-    pub temperature: Option<f32>, // Celsius (from WMI on Windows)
+    pub temperature: Option<f32>,            // Celsius (from sidecar)
+    pub core_temperatures: Option<Vec<f32>>, // Per-core temps (from sidecar)
+    pub power: Option<f32>,                  // Watts (from sidecar)
 }
 
 /// RAM/Memory statistics
@@ -49,11 +51,15 @@ pub struct RamStats {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuStats {
     pub name: String,
-    pub usage: f32,               // 0-100%
-    pub memory_total: u64,        // bytes
-    pub memory_used: u64,         // bytes
-    pub temperature: Option<u32>, // Celsius
-    pub fan_speed: Option<u32>,   // 0-100%
+    pub usage: f32,                        // 0-100%
+    pub memory_total: u64,                 // bytes
+    pub memory_used: u64,                  // bytes
+    pub temperature: Option<f32>,          // Celsius
+    pub hot_spot_temperature: Option<f32>, // Celsius - GPU hottest point (from sidecar)
+    pub fan_speed: Option<f32>,            // 0-100%
+    pub power: Option<f32>,                // Watts (from sidecar)
+    pub core_clock: Option<f32>,           // MHz (from sidecar)
+    pub memory_clock: Option<f32>,         // MHz (from sidecar)
 }
 
 /// Combined system statistics payload
@@ -77,6 +83,8 @@ impl Default for CpuStats {
             logical_cores: 0,
             per_core_usage: Vec::new(),
             temperature: None,
+            core_temperatures: None,
+            power: None,
         }
     }
 }
@@ -100,7 +108,11 @@ impl Default for GpuStats {
             memory_total: 0,
             memory_used: 0,
             temperature: None,
+            hot_spot_temperature: None,
             fan_speed: None,
+            power: None,
+            core_clock: None,
+            memory_clock: None,
         }
     }
 }

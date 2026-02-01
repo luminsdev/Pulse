@@ -22,3 +22,27 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# .NET build artifacts
+src-tauri/sidecar/**/bin/
+src-tauri/sidecar/**/obj/
+src-tauri/sidecar/**/*.user
+src-tauri/sidecar/**/.vs/
+
+# Sidecar binaries (large files, build from source)
+src-tauri/binaries/*.exe
+src-tauri/binaries/*.pdb
+src-tauri/binaries/*.dll
+
+# NuGet
+*.nupkg
+.nuget/
+packages/
+
+# Rust/Tauri build
+src-tauri/target/
+
+# Misc
+*.bak
+*.tmp
+Thumbs.db

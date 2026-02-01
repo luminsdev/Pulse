@@ -40,13 +40,14 @@ impl GpuMonitor {
         // Memory info
         let memory = device.memory_info().ok()?;
 
-        // Temperature
+        // Temperature (convert u32 to f32)
         let temperature = device
             .temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu)
-            .ok();
+            .ok()
+            .map(|t| t as f32);
 
-        // Fan speed (may not be available on all GPUs)
-        let fan_speed = device.fan_speed(0).ok();
+        // Fan speed (may not be available on all GPUs) - convert u32 to f32
+        let fan_speed = device.fan_speed(0).ok().map(|f| f as f32);
 
         Some(GpuStats {
             name,
@@ -54,7 +55,11 @@ impl GpuMonitor {
             memory_total: memory.total,
             memory_used: memory.used,
             temperature,
+            hot_spot_temperature: None, // Will be filled from sidecar
             fan_speed,
+            power: None,        // Will be filled from sidecar
+            core_clock: None,   // Will be filled from sidecar
+            memory_clock: None, // Will be filled from sidecar
         })
     }
 }
@@ -130,7 +135,9 @@ impl SystemMonitor {
             cores,
             logical_cores,
             per_core_usage,
-            temperature: None, // Will be filled from sidecar
+            temperature: None,       // Will be filled from sidecar
+            core_temperatures: None, // Will be filled from sidecar
+            power: None,             // Will be filled from sidecar
         }
     }
 

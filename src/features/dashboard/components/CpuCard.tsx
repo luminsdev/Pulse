@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Cpu, Thermometer, Activity } from "lucide-react";
+import { Cpu, Thermometer, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -9,7 +9,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SystemChart, CircularProgress, type ChartDataPoint } from "@/components/charts";
-import { formatFrequency, formatTemperature, formatPercent } from "@/lib/utils";
+import {
+  formatFrequency,
+  formatTemperature,
+  formatPower,
+  getTemperatureColor,
+} from "@/lib/utils";
 import type { CpuStats } from "@/types/stats";
 import type { StatsHistoryPoint } from "../hooks/useSystemStats";
 
@@ -31,6 +36,12 @@ export function CpuCard({ stats, history }: CpuCardProps) {
       value: point.cpuUsage,
     }));
   }, [history]);
+
+  // Get temperature color info
+  const tempColor = useMemo(
+    () => getTemperatureColor(stats?.temperature, "cpu"),
+    [stats?.temperature]
+  );
 
   // Loading state
   if (!stats) {
@@ -96,28 +107,58 @@ export function CpuCard({ stats, history }: CpuCardProps) {
               <p className="font-medium">{formatFrequency(stats.frequency)}</p>
             </div>
 
-            {/* Temperature */}
+            {/* Temperature with color coding */}
             <div className="space-y-1">
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Thermometer className="h-3 w-3" />
                 Temperature
               </span>
-              <p className="font-medium">
+              <p className={`font-medium ${tempColor.textColor}`}>
                 {stats.temperature != null
                   ? formatTemperature(stats.temperature)
                   : "N/A"}
               </p>
             </div>
 
-            {/* Usage */}
+            {/* Power consumption */}
             <div className="space-y-1">
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Activity className="h-3 w-3" />
-                Usage
+                <Zap className="h-3 w-3" />
+                Power
               </span>
-              <p className="font-medium">{formatPercent(stats.usage)}</p>
+              <p className="font-medium">
+                {stats.power != null ? formatPower(stats.power) : "N/A"}
+              </p>
             </div>
           </div>
+
+          {/* Per-Core Temperature (if available) */}
+          {stats.core_temperatures && stats.core_temperatures.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground">
+                Core Temperatures ({stats.core_temperatures.length} cores)
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {stats.core_temperatures.slice(0, 16).map((temp, index) => {
+                  const coreColor = getTemperatureColor(temp, "cpu");
+                  return (
+                    <div
+                      key={index}
+                      className={`px-1.5 py-0.5 rounded text-xs font-medium ${coreColor.bgColor} ${coreColor.textColor}`}
+                      title={`Core ${index}: ${temp != null ? formatTemperature(temp) : "N/A"}`}
+                    >
+                      {temp != null ? `${temp.toFixed(0)}°` : "—"}
+                    </div>
+                  );
+                })}
+                {stats.core_temperatures.length > 16 && (
+                  <span className="text-xs text-muted-foreground ml-1">
+                    +{stats.core_temperatures.length - 16}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Per-Core Usage (compact view) */}
           {stats.per_core_usage.length > 0 && (

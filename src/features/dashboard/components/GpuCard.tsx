@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MonitorSpeaker, Thermometer, Fan, Gauge } from "lucide-react";
+import { MonitorSpeaker, Thermometer, Fan, Gauge, Zap, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -9,7 +9,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SystemChart, CircularProgress, ProgressBar, type ChartDataPoint } from "@/components/charts";
-import { formatBytes, formatPercent, formatTemperature } from "@/lib/utils";
+import {
+  formatBytes,
+  formatPercent,
+  formatTemperature,
+  formatPower,
+  formatClock,
+  getTemperatureColor,
+} from "@/lib/utils";
 import type { GpuStats } from "@/types/stats";
 import type { StatsHistoryPoint } from "../hooks/useSystemStats";
 
@@ -40,6 +47,18 @@ export function GpuCard({ stats, history, isAvailable = true }: GpuCardProps) {
     if (!stats || stats.memory_total === 0) return 0;
     return (stats.memory_used / stats.memory_total) * 100;
   }, [stats]);
+
+  // Get temperature color info
+  const tempColor = useMemo(
+    () => getTemperatureColor(stats?.temperature, "gpu"),
+    [stats?.temperature]
+  );
+
+  // Get hot spot temperature color
+  const hotSpotColor = useMemo(
+    () => getTemperatureColor(stats?.hot_spot_temperature, "gpu"),
+    [stats?.hot_spot_temperature]
+  );
 
   // No GPU available
   if (!isAvailable || stats === undefined) {
@@ -125,33 +144,42 @@ export function GpuCard({ stats, history, isAvailable = true }: GpuCardProps) {
             />
           </div>
 
-          {/* Stats Grid */}
+          {/* Stats Grid - First Row */}
           <div className="grid grid-cols-2 gap-3 text-sm">
-            {/* Usage */}
-            <div className="space-y-1">
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Gauge className="h-3 w-3" />
-                Usage
-              </span>
-              <p className="font-medium">{formatPercent(stats.usage)}</p>
-            </div>
-
-            {/* VRAM Usage */}
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">VRAM Usage</span>
-              <p className="font-medium">{formatPercent(vramUsagePercent)}</p>
-            </div>
-
-            {/* Temperature */}
+            {/* Temperature with color coding */}
             <div className="space-y-1">
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Thermometer className="h-3 w-3" />
                 Temperature
               </span>
-              <p className="font-medium">
+              <p className={`font-medium ${tempColor.textColor}`}>
                 {stats.temperature != null
                   ? formatTemperature(stats.temperature)
                   : "N/A"}
+              </p>
+            </div>
+
+            {/* Hot Spot Temperature */}
+            <div className="space-y-1">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Thermometer className="h-3 w-3" />
+                Hot Spot
+              </span>
+              <p className={`font-medium ${hotSpotColor.textColor}`}>
+                {stats.hot_spot_temperature != null
+                  ? formatTemperature(stats.hot_spot_temperature)
+                  : "N/A"}
+              </p>
+            </div>
+
+            {/* Power consumption */}
+            <div className="space-y-1">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Zap className="h-3 w-3" />
+                Power
+              </span>
+              <p className="font-medium">
+                {stats.power != null ? formatPower(stats.power) : "N/A"}
               </p>
             </div>
 
@@ -167,6 +195,44 @@ export function GpuCard({ stats, history, isAvailable = true }: GpuCardProps) {
                   : "N/A"}
               </p>
             </div>
+          </div>
+
+          {/* Stats Grid - Second Row (Clocks) */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {/* Core Clock */}
+            <div className="space-y-1">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                Core Clock
+              </span>
+              <p className="font-medium">
+                {stats.core_clock != null
+                  ? formatClock(stats.core_clock)
+                  : "N/A"}
+              </p>
+            </div>
+
+            {/* Memory Clock */}
+            <div className="space-y-1">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                Mem Clock
+              </span>
+              <p className="font-medium">
+                {stats.memory_clock != null
+                  ? formatClock(stats.memory_clock)
+                  : "N/A"}
+              </p>
+            </div>
+          </div>
+
+          {/* Usage indicator */}
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Gauge className="h-3 w-3" />
+              GPU Load
+            </span>
+            <p className="font-medium">{formatPercent(stats.usage)}</p>
           </div>
 
           {/* Realtime Chart */}

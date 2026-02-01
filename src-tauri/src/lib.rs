@@ -13,11 +13,20 @@ mod services;
 mod utils;
 
 use commands::{get_system_stats, has_gpu_support, hide_mini_window, show_main_window, toggle_mini_mode, MonitorState};
-use services::{SystemMonitor, SidecarState, start_sidecar};
+use services::{SystemMonitor, SidecarState, SidecarStatusInfo, start_sidecar};
 
 /// Shared state for sidecar data
 pub struct AppState {
     pub sidecar: Arc<SidecarState>,
+}
+
+/// Payload for sidecar status event
+#[derive(serde::Serialize, Clone)]
+struct SidecarStatusPayload {
+    #[serde(flatten)]
+    status: SidecarStatusInfo,
+    restart_count: u32,
+    can_restart: bool,
 }
 
 /// Start a background thread that emits system stats every second
@@ -38,23 +47,39 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
             if let Some(sidecar_data) = sidecar_state.get_data() {
                 // CPU temperature from sidecar
                 if let Some(cpu_data) = &sidecar_data.cpu {
-                    if let Some(temp) = cpu_data.temperature {
-                        stats.cpu.temperature = Some(temp);
+                    stats.cpu.temperature = cpu_data.temperature;
+                    stats.cpu.power = cpu_data.power;
+                    
+                    // Core temperatures - filter out None values
+                    if !cpu_data.core_temperatures.is_empty() {
+                        let temps: Vec<f32> = cpu_data.core_temperatures
+                            .iter()
+                            .filter_map(|t| *t)
+                            .collect();
+                        if !temps.is_empty() {
+                            stats.cpu.core_temperatures = Some(temps);
+                        }
                     }
                 }
                 
-                // GPU data from sidecar (more detailed than NVML in some cases)
-                if let Some(gpu_data) = &sidecar_data.gpu {
+                // GPU data from sidecar (first GPU if available)
+                if let Some(gpu_data) = sidecar_data.gpu.first() {
                     if let Some(ref mut gpu) = stats.gpu {
                         // Use sidecar GPU temp if available
                         if let Some(temp) = gpu_data.temperature {
-                            gpu.temperature = Some(temp as u32);
+                            gpu.temperature = Some(temp);
                         }
+                        // Hot spot temperature
+                        gpu.hot_spot_temperature = gpu_data.hot_spot_temperature;
+                        // Power consumption
+                        gpu.power = gpu_data.power;
+                        // Core clock
+                        gpu.core_clock = gpu_data.core_clock;
+                        // Memory clock
+                        gpu.memory_clock = gpu_data.memory_clock;
                         // Use sidecar fan speed if available and we don't have it
                         if gpu.fan_speed.is_none() {
-                            if let Some(fan) = gpu_data.fan_percent {
-                                gpu.fan_speed = Some(fan as u32);
-                            }
+                            gpu.fan_speed = gpu_data.fan_speed;
                         }
                     }
                 }
@@ -64,6 +89,14 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
             if let Err(e) = app.emit("system-stats", &stats) {
                 eprintln!("Failed to emit system-stats: {}", e);
             }
+            
+            // Emit sidecar status
+            let status_payload = SidecarStatusPayload {
+                status: sidecar_state.get_status_info(),
+                restart_count: sidecar_state.get_restart_count(),
+                can_restart: sidecar_state.can_restart(),
+            };
+            let _ = app.emit("sidecar-status", &status_payload);
             
             // Sleep for 1 second
             thread::sleep(Duration::from_secs(1));
