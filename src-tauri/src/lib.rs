@@ -1,7 +1,11 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{Emitter, Manager};
+use tauri::{
+    Emitter, Manager,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    menu::{Menu, MenuItem},
+};
 
 mod commands;
 mod models;
@@ -67,6 +71,71 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
     });
 }
 
+/// Setup system tray with menu
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Create menu items
+    let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+    let mini_item = MenuItem::with_id(app, "mini", "Mini Mode", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    
+    // Create menu
+    let menu = Menu::with_items(app, &[&show_item, &mini_item, &quit_item])?;
+    
+    // Load tray icon - use include_bytes for embedded icon
+    let icon_bytes = include_bytes!("../icons/32x32.png");
+    let icon = tauri::image::Image::from_bytes(icon_bytes)
+        .expect("Failed to load tray icon");
+    
+    // Build tray
+    let _tray = TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&menu)
+        .tooltip("Hardware Monitor")
+        .on_menu_event(|app, event| {
+            match event.id.as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "mini" => {
+                    // Toggle to mini mode
+                    if let Some(main) = app.get_webview_window("main") {
+                        let _ = main.hide();
+                    }
+                    if let Some(mini) = app.get_webview_window("mini") {
+                        let _ = mini.show();
+                        let _ = mini.set_focus();
+                    }
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            // Left click on tray icon -> show main window
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+    
+    println!("[Tray] System tray initialized");
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -83,6 +152,11 @@ pub fn run() {
         .setup(|app| {
             println!("[App] Starting hardware monitor...");
             
+            // Setup system tray
+            if let Err(e) = setup_tray(app) {
+                eprintln!("[Tray] Failed to setup tray: {}", e);
+            }
+            
             // Start the sidecar for temperature monitoring
             // The sidecar runs as elevated process and provides sensor data
             let sidecar_state = start_sidecar(app.handle());
@@ -94,6 +168,20 @@ pub fn run() {
             
             // Start the background stats emitter
             start_stats_emitter(app.handle().clone(), sidecar_state);
+            
+            // Handle window close event - hide to tray instead of quit
+            let main_window = app.get_webview_window("main");
+            if let Some(window) = main_window {
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // Prevent the window from closing, hide it instead
+                        api.prevent_close();
+                        let _ = window_clone.hide();
+                        println!("[App] Main window hidden to tray");
+                    }
+                });
+            }
             
             println!("[App] Initialization complete");
             Ok(())
