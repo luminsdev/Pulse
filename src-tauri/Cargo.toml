@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Hardware Monitoring Desktop App"
 authors = ["you"]
 edition = "2021"
+default-run = "hardware-monitor"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,4 +29,9 @@ sysinfo = "0.35"
 
 # NVIDIA GPU support (optional, only works if NVIDIA drivers are installed)
 nvml-wrapper = "0.10"
+tauri-plugin-shell = "2.3.4"
+
+# Windows WMI for CPU temperature
+[target.'cfg(windows)'.dependencies]
+wmi = "0.14"
 

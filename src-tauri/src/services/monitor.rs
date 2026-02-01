@@ -1,7 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use sysinfo::{
+    CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System,
+};
 
-use crate::models::{CpuStats, GpuStats, RamStats, SystemStats};
+use crate::models::{CpuStats, GpuStats, ProcessInfo, RamStats, SystemInfo, SystemStats};
 
 /// GPU monitoring service using NVML (NVIDIA Management Library)
 pub struct GpuMonitor {
@@ -64,6 +66,7 @@ impl Default for GpuMonitor {
 }
 
 /// System monitor that collects CPU, RAM, and GPU statistics
+/// Note: CPU temperature comes from sidecar, not from this monitor directly
 pub struct SystemMonitor {
     system: System,
     gpu_monitor: GpuMonitor,
@@ -74,7 +77,8 @@ impl SystemMonitor {
         let system = System::new_with_specifics(
             RefreshKind::nothing()
                 .with_cpu(CpuRefreshKind::everything())
-                .with_memory(MemoryRefreshKind::everything()),
+                .with_memory(MemoryRefreshKind::everything())
+                .with_processes(ProcessRefreshKind::everything()),
         );
 
         Self {
@@ -87,9 +91,11 @@ impl SystemMonitor {
     pub fn refresh(&mut self) {
         self.system.refresh_cpu_all();
         self.system.refresh_memory();
+        self.system.refresh_processes(ProcessesToUpdate::All, true);
     }
 
     /// Get current CPU statistics
+    /// Note: temperature is None - it will be filled in from sidecar data
     pub fn get_cpu_stats(&self) -> CpuStats {
         let cpus = self.system.cpus();
 
@@ -124,6 +130,7 @@ impl SystemMonitor {
             cores,
             logical_cores,
             per_core_usage,
+            temperature: None, // Will be filled from sidecar
         }
     }
 
@@ -152,6 +159,72 @@ impl SystemMonitor {
         self.gpu_monitor.get_stats()
     }
 
+    /// Get static system information
+    pub fn get_system_info(&self) -> SystemInfo {
+        let cpus = self.system.cpus();
+        let cpu_name = cpus
+            .first()
+            .map(|c| c.brand().to_string())
+            .unwrap_or_else(|| "Unknown CPU".to_string());
+
+        let cpu_cores = System::physical_core_count().unwrap_or(0);
+        let cpu_threads = cpus.len();
+        let ram_total = self.system.total_memory();
+
+        // GPU info from GPU monitor
+        let gpu_stats = self.gpu_monitor.get_stats();
+        let gpu_name = gpu_stats.as_ref().map(|g| g.name.clone());
+        let gpu_vram_total = gpu_stats.as_ref().map(|g| g.memory_total);
+
+        // OS info
+        let os_name = System::name().unwrap_or_else(|| "Unknown".to_string());
+        let os_version = System::os_version().unwrap_or_default();
+        let hostname = System::host_name().unwrap_or_default();
+
+        // Uptime
+        let uptime_seconds = System::uptime();
+
+        SystemInfo {
+            cpu_name,
+            cpu_cores,
+            cpu_threads,
+            ram_total,
+            gpu_name,
+            gpu_vram_total,
+            os_name,
+            os_version,
+            hostname,
+            uptime_seconds,
+        }
+    }
+
+    /// Get top processes sorted by CPU usage
+    pub fn get_top_processes(&self, limit: usize) -> Vec<ProcessInfo> {
+        let mut processes: Vec<ProcessInfo> = self
+            .system
+            .processes()
+            .iter()
+            .map(|(pid, process)| ProcessInfo {
+                pid: pid.as_u32(),
+                name: process.name().to_string_lossy().to_string(),
+                cpu_usage: process.cpu_usage(),
+                memory: process.memory(),
+            })
+            .filter(|p| p.cpu_usage > 0.0 || p.memory > 0) // Filter out idle processes
+            .collect();
+
+        // Sort by CPU usage descending
+        processes.sort_by(|a, b| {
+            b.cpu_usage
+                .partial_cmp(&a.cpu_usage)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Take top N
+        processes.truncate(limit);
+        processes
+    }
+
     /// Get all system statistics
     pub fn get_system_stats(&self) -> SystemStats {
         let timestamp = SystemTime::now()
@@ -163,6 +236,8 @@ impl SystemMonitor {
             cpu: self.get_cpu_stats(),
             ram: self.get_ram_stats(),
             gpu: self.get_gpu_stats(),
+            system_info: self.get_system_info(),
+            processes: self.get_top_processes(10), // Top 10 processes
             timestamp,
         }
     }
