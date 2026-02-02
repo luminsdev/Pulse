@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Hardware Monitor",
+  "productName": "Pulse",
   "version": "0.1.0",
-  "identifier": "com.giahu.hardware-monitor",
+  "identifier": "com.giahu.pulse",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Hardware Monitor",
+        "title": "Pulse",
         "width": 1000,
         "height": 700,
         "minWidth": 800,
@@ -24,7 +24,7 @@
       },
       {
         "label": "mini",
-        "title": "Mini Monitor",
+        "title": "Pulse Mini",
         "url": "index.html?window=mini",
         "width": 320,
         "height": 160,
@@ -62,9 +62,7 @@
 
     "windows": {
       "nsis": {
-        "installerIcon": "icons/icon.ico",
-        "headerImage": null,
-        "sidebarImage": null
+        "installerIcon": "icons/icon.ico"
       }
     }
   }

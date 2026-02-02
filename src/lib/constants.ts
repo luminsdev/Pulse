@@ -1,4 +1,4 @@
-export const APP_NAME = "Hardware Monitor";
+export const APP_NAME = "Pulse";
 
 export const REFRESH_INTERVAL_MS = 1000; // 1 second polling
 

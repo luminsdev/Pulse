@@ -22,8 +22,8 @@
       "identifier": "shell:allow-execute",
       "allow": [
         {
-          "name": "hw-monitor",
-          "cmd": "binaries/hw-monitor",
+          "name": "lhm-sidecar",
+          "cmd": "binaries/lhm-sidecar",
           "sidecar": true,
           "args": true
         }

@@ -1,10 +1,10 @@
 [package]
-name = "hardware-monitor"
+name = "pulse"
 version = "0.1.0"
-description = "Hardware Monitoring Desktop App"
+description = "Pulse - System Resource Monitoring"
 authors = ["you"]
 edition = "2021"
-default-run = "hardware-monitor"
+default-run = "pulse"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,7 +12,7 @@ default-run = "hardware-monitor"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "hardware_monitor_lib"
+name = "pulse_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -34,4 +34,36 @@ tauri-plugin-shell = "2.3.4"
 # Windows WMI for CPU temperature
 [target.'cfg(windows)'.dependencies]
 wmi = "0.14"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Release Build Optimizations
+# ═══════════════════════════════════════════════════════════════════════════════
+
+[profile.release]
+# Link-Time Optimization for smaller binary and better performance
+lto = true
+
+# Single codegen unit for maximum optimization (slower build, better output)
+codegen-units = 1
+
+# Strip debug symbols to reduce binary size
+strip = true
+
+# Abort on panic (smaller binary, no unwinding overhead)
+panic = "abort"
+
+# Optimize for size ("z" = aggressive size, "s" = balanced, "3" = speed)
+opt-level = "s"
+
+# Dev profile with some optimizations for faster testing
+[profile.dev]
+# Keep debug info but enable some optimizations
+opt-level = 1
+
+# Enable incremental compilation for faster rebuilds
+incremental = true
+
+[profile.dev.package."*"]
+# Optimize dependencies in dev mode
+opt-level = 2
 

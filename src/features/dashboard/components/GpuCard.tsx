@@ -102,11 +102,12 @@ export function GpuCard({ stats, history, isAvailable = true }: GpuCardProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: 0.2 }}
+      whileHover={{ 
+        scale: 1.01,
+        transition: { duration: 0.15 }
+      }}
     >
-      <Card className="relative overflow-hidden">
+      <Card className="relative overflow-hidden transition-shadow hover:shadow-lg">
         {/* Header */}
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
