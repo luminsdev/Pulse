@@ -22,25 +22,25 @@ function App() {
   // Render main dashboard
   return (
     <ThemeProvider defaultTheme="dark" storageKey="hardware-monitor-theme">
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen bg-background text-foreground scrollbar-thin">
         {/* Header */}
-        <header className="sticky top-0 z-50 flex items-center justify-between p-4 border-b bg-background/80 backdrop-blur-sm">
-          <h1 className="text-xl font-semibold">{APP_NAME}</h1>
-          <div className="flex items-center gap-2">
+        <header className="sticky top-0 z-50 flex items-center justify-between px-3 sm:px-4 py-3 border-b bg-background/80 backdrop-blur-md">
+          <h1 className="text-base sm:text-xl font-semibold tracking-tight">{APP_NAME}</h1>
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* Mini Mode Toggle Button */}
             <button
               onClick={() => toggleMiniMode().catch(console.error)}
-              className="p-2 rounded-lg hover:bg-accent transition-colors"
+              className="p-2 rounded-lg hover:bg-accent transition-colors cursor-pointer"
               title="Switch to Mini Mode"
             >
-              <Minimize2 className="h-5 w-5" />
+              <Minimize2 className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
             <ThemeToggle />
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="container mx-auto p-4">
+        <main className="container mx-auto max-w-7xl">
           <Dashboard />
         </main>
       </div>

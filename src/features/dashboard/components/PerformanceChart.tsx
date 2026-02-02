@@ -79,45 +79,45 @@ export function PerformanceChart({ history, hasGpu = true }: PerformanceChartPro
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Current values row */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Current values row - Responsive grid */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
             {/* CPU */}
-            <div className="flex items-center gap-3 rounded-lg bg-blue-500/10 px-3 py-2">
-              <div className="h-3 w-3 rounded-full bg-blue-500" />
-              <div>
-                <p className="text-xs text-muted-foreground">CPU</p>
-                <p className="text-lg font-semibold text-blue-500">
+            <div className="flex flex-col xs:flex-row items-center gap-1.5 xs:gap-3 rounded-lg bg-blue-500/10 px-2 sm:px-3 py-2">
+              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-blue-500 shrink-0" />
+              <div className="text-center xs:text-left">
+                <p className="text-[10px] sm:text-xs text-muted-foreground">CPU</p>
+                <p className="text-base sm:text-lg font-semibold text-blue-500">
                   {current?.cpuUsage.toFixed(1) ?? "—"}%
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] sm:text-xs text-muted-foreground hidden xs:block">
                   avg {getAvg("cpuUsage").toFixed(0)}%
                 </p>
               </div>
             </div>
 
             {/* RAM */}
-            <div className="flex items-center gap-3 rounded-lg bg-green-500/10 px-3 py-2">
-              <div className="h-3 w-3 rounded-full bg-green-500" />
-              <div>
-                <p className="text-xs text-muted-foreground">RAM</p>
-                <p className="text-lg font-semibold text-green-500">
+            <div className="flex flex-col xs:flex-row items-center gap-1.5 xs:gap-3 rounded-lg bg-green-500/10 px-2 sm:px-3 py-2">
+              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-green-500 shrink-0" />
+              <div className="text-center xs:text-left">
+                <p className="text-[10px] sm:text-xs text-muted-foreground">RAM</p>
+                <p className="text-base sm:text-lg font-semibold text-green-500">
                   {current?.ramUsage.toFixed(1) ?? "—"}%
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] sm:text-xs text-muted-foreground hidden xs:block">
                   avg {getAvg("ramUsage").toFixed(0)}%
                 </p>
               </div>
             </div>
 
             {/* GPU */}
-            <div className="flex items-center gap-3 rounded-lg bg-purple-500/10 px-3 py-2">
-              <div className="h-3 w-3 rounded-full bg-purple-500" />
-              <div>
-                <p className="text-xs text-muted-foreground">GPU</p>
-                <p className="text-lg font-semibold text-purple-500">
+            <div className="flex flex-col xs:flex-row items-center gap-1.5 xs:gap-3 rounded-lg bg-purple-500/10 px-2 sm:px-3 py-2">
+              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-purple-500 shrink-0" />
+              <div className="text-center xs:text-left">
+                <p className="text-[10px] sm:text-xs text-muted-foreground">GPU</p>
+                <p className="text-base sm:text-lg font-semibold text-purple-500">
                   {hasGpu ? `${current?.gpuUsage.toFixed(1) ?? "—"}%` : "N/A"}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] sm:text-xs text-muted-foreground hidden xs:block">
                   {hasGpu ? `avg ${getAvg("gpuUsage").toFixed(0)}%` : "No GPU"}
                 </p>
               </div>
@@ -125,7 +125,7 @@ export function PerformanceChart({ history, hasGpu = true }: PerformanceChartPro
           </div>
 
           {/* Combined Chart */}
-          <div className="h-[220px] w-full">
+          <div className="h-[180px] sm:h-[220px] w-full">
             {chartData.length === 0 ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
                 Collecting data...

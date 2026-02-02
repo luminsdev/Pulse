@@ -47,7 +47,7 @@ export function TopProcessesCard({ processes }: TopProcessesCardProps) {
               </div>
 
               {/* Process list */}
-              <div className="space-y-0.5 max-h-[240px] overflow-y-auto">
+              <div className="space-y-0.5 max-h-[240px] overflow-y-auto scrollbar-thin">
                 <AnimatePresence mode="popLayout">
                   {processes.slice(0, 8).map((process, index) => (
                     <motion.div

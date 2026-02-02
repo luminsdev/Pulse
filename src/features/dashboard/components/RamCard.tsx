@@ -53,12 +53,11 @@ export function RamCard({ stats, history }: RamCardProps) {
 
   return (
     <motion.div
-      whileHover={{ 
-        scale: 1.01,
-        transition: { duration: 0.15 }
-      }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.05 }}
     >
-      <Card className="relative overflow-hidden transition-shadow hover:shadow-lg">
+      <Card className="relative overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/5 hover:border-emerald-500/20 cursor-default">
         {/* Header */}
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
