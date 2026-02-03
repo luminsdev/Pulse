@@ -61,8 +61,16 @@
     ],
 
     "windows": {
+      "certificateThumbprint": null,
+      "wix": null,
       "nsis": {
-        "installerIcon": "icons/icon.ico"
+        "installerIcon": "icons/icon.ico",
+        "headerImage": null,
+        "sidebarImage": null,
+        "installMode": "currentUser",
+        "languages": ["English"],
+        "displayLanguageSelector": false,
+        "compression": "lzma"
       }
     }
   }
