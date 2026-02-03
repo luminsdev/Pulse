@@ -336,7 +336,10 @@ class Program
                 case SensorType.Temperature:
                     if (name.Contains("hot spot") || name.Contains("hotspot"))
                         gpu.HotSpotTemperature = sensor.Value;
-                    else if (name.Contains("gpu") || name == "temperature")
+                    else if (name == "gpu core" || name == "gpu" || name == "temperature")
+                        gpu.Temperature = sensor.Value;
+                    // Only set if not already set by a more specific sensor
+                    else if (gpu.Temperature is null && name.Contains("gpu") && !name.Contains("memory") && !name.Contains("junction"))
                         gpu.Temperature = sensor.Value;
                     break;
 
