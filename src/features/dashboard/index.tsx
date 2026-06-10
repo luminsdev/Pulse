@@ -1,8 +1,12 @@
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Activity, Wifi, WifiOff } from "lucide-react";
+import { CardErrorBoundary } from "@/components/common/CardErrorBoundary";
 import { useSystemStats } from "./hooks/useSystemStats";
+import { useSystemInfo } from "./hooks/useSystemInfo";
+import { useProcessList } from "./hooks/useProcessList";
 import { useSidecarStatus } from "./hooks/useSidecarStatus";
+import { useFpsStats } from "./hooks/useFpsStats";
 import {
   CpuCard,
   RamCard,
@@ -19,7 +23,10 @@ import {
  */
 export function Dashboard() {
   const { stats, history, isConnected } = useSystemStats();
+  const { info: systemInfo } = useSystemInfo();
+  const { processes } = useProcessList();
   const { status: sidecarStatus, message: sidecarMessage, showWarning } = useSidecarStatus();
+  const { data: fpsData, status: fpsStatus, presentMonInstalled } = useFpsStats();
   const [warningDismissed, setWarningDismissed] = useState(false);
 
   const handleDismissWarning = useCallback(() => {
@@ -61,25 +68,34 @@ export function Dashboard() {
 
       {/* Top Row: Hardware Cards - Responsive grid */}
       <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
-        <CpuCard stats={stats?.cpu ?? null} history={history} />
-        <RamCard stats={stats?.ram ?? null} history={history} />
-        <GpuCard
-          stats={stats?.gpu}
-          history={history}
-          isAvailable={stats?.gpu !== undefined}
-        />
+        <CardErrorBoundary>
+          <CpuCard stats={stats?.cpu ?? null} history={history} />
+        </CardErrorBoundary>
+        <CardErrorBoundary>
+          <RamCard stats={stats?.ram ?? null} history={history} />
+        </CardErrorBoundary>
+        <CardErrorBoundary>
+          <GpuCard
+            stats={stats?.gpu}
+            history={history}
+            isAvailable={stats?.gpu != null}
+            fpsData={fpsData}
+            fpsStatus={fpsStatus}
+            presentMonInstalled={presentMonInstalled}
+          />
+        </CardErrorBoundary>
       </div>
 
       {/* Middle Row: Performance Chart */}
       <PerformanceChart
         history={history}
-        hasGpu={stats?.gpu !== undefined}
+        hasGpu={stats?.gpu != null}
       />
 
       {/* Bottom Row: System Info + Top Processes - Stack on mobile */}
       <div className="grid gap-3 sm:gap-4 grid-cols-1 lg:grid-cols-2">
-        <SystemInfoCard info={stats?.system_info ?? null} />
-        <TopProcessesCard processes={stats?.processes ?? []} />
+        <SystemInfoCard info={systemInfo} />
+        <TopProcessesCard processes={processes} />
       </div>
 
       {/* Footer */}

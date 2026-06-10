@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MonitorSpeaker, Thermometer, Fan, Gauge, Zap, Clock } from "lucide-react";
+import { MonitorSpeaker, Thermometer, Fan, Gauge, Zap, Clock, Gamepad2, Timer, TrendingDown, AlertCircle, Download } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -17,8 +17,9 @@ import {
   formatClock,
   getTemperatureColor,
 } from "@/lib/utils";
-import type { GpuStats } from "@/types/stats";
+import type { GpuStats, FpsData, FpsSidecarStatusType } from "@/types/stats";
 import type { StatsHistoryPoint } from "../hooks/useSystemStats";
+import { getFpsColor, getFpsColorClass, formatFps, formatFrameTime } from "../hooks/useFpsStats";
 
 interface GpuCardProps {
   /** Current GPU stats (null if no GPU detected) */
@@ -27,13 +28,26 @@ interface GpuCardProps {
   history: StatsHistoryPoint[];
   /** Whether GPU support is available */
   isAvailable?: boolean;
+  /** FPS data from PresentMon */
+  fpsData?: FpsData | null;
+  /** FPS monitoring status */
+  fpsStatus?: FpsSidecarStatusType;
+  /** Whether PresentMon is installed */
+  presentMonInstalled?: boolean;
 }
 
 /**
  * GPU monitoring card with realtime chart and metrics
  * Shows a placeholder if no GPU is detected
  */
-export function GpuCard({ stats, history, isAvailable = true }: GpuCardProps) {
+export function GpuCard({ 
+  stats, 
+  history, 
+  isAvailable = true,
+  fpsData,
+  fpsStatus = "not_started",
+  presentMonInstalled = true,
+}: GpuCardProps) {
   // Prepare chart data
   const chartData: ChartDataPoint[] = useMemo(() => {
     return history.map((point) => ({
@@ -226,6 +240,13 @@ export function GpuCard({ stats, history, isAvailable = true }: GpuCardProps) {
             </div>
           </div>
 
+          {/* FPS Section */}
+          <FpsSection 
+            fpsData={fpsData}
+            fpsStatus={fpsStatus}
+            presentMonInstalled={presentMonInstalled}
+          />
+
           {/* Usage indicator */}
           <div className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -249,4 +270,169 @@ export function GpuCard({ stats, history, isAvailable = true }: GpuCardProps) {
       </Card>
     </motion.div>
   );
+}
+
+/** FPS Section Props */
+interface FpsSectionProps {
+  fpsData?: FpsData | null;
+  fpsStatus: FpsSidecarStatusType;
+  presentMonInstalled: boolean;
+}
+
+/** 
+ * FPS monitoring section within GPU card 
+ * Shows current FPS, frame time, and low percentiles
+ */
+function FpsSection({ fpsData, fpsStatus, presentMonInstalled }: FpsSectionProps) {
+  // PresentMon not installed - show install prompt
+  if (!presentMonInstalled || fpsStatus === "not_installed") {
+    return (
+      <div className="pt-3 border-t border-border/50">
+        <div className="flex items-center gap-2 text-sm">
+          <Gamepad2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
+        </div>
+        <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-border/50">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">
+                PresentMon is required for FPS monitoring
+              </p>
+              <a
+                href="https://github.com/GameTechDev/PresentMon/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+              >
+                <Download className="h-3 w-3" />
+                Download PresentMon
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No game detected
+  if (fpsStatus === "no_game" || (fpsStatus === "running" && !fpsData)) {
+    return (
+      <div className="pt-3 border-t border-border/50">
+        <div className="flex items-center gap-2 text-sm">
+          <Gamepad2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
+        </div>
+        <div className="mt-2 flex items-center justify-center py-4 text-muted-foreground">
+          <div className="text-center">
+            <Gamepad2 className="h-6 w-6 mx-auto mb-1 opacity-50" />
+            <p className="text-xs">No game detected</p>
+            <p className="text-[10px] opacity-70">Start a game to see FPS stats</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not started or stopped
+  if (fpsStatus === "not_started" || fpsStatus === "stopped") {
+    return (
+      <div className="pt-3 border-t border-border/50">
+        <div className="flex items-center gap-2 text-sm">
+          <Gamepad2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
+        </div>
+        <div className="mt-2 flex items-center justify-center py-3 text-muted-foreground">
+          <p className="text-xs">
+            {fpsStatus === "not_started" ? "Initializing..." : "Stopped"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (fpsStatus === "error") {
+    return (
+      <div className="pt-3 border-t border-border/50">
+        <div className="flex items-center gap-2 text-sm">
+          <Gamepad2 className="h-4 w-4 text-red-500" />
+          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
+        </div>
+        <div className="mt-2 flex items-center gap-2 p-2 rounded bg-red-500/10">
+          <AlertCircle className="h-3 w-3 text-red-500" />
+          <p className="text-xs text-red-500">Error reading FPS data</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Active with FPS data
+  if (fpsData) {
+    const fpsColor = getFpsColor(fpsData.fps);
+    const fpsColorClass = getFpsColorClass(fpsData.fps);
+    
+    return (
+      <div className="pt-3 border-t border-border/50">
+        {/* Header with game name */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <Gamepad2 className="h-4 w-4" style={{ color: fpsColor }} />
+            <span className="text-muted-foreground font-medium">FPS</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+            {fpsData.process_name}
+          </span>
+        </div>
+
+        {/* Main FPS display */}
+        <div className="mt-2 flex items-center justify-center">
+          <div className="text-center">
+            <span className={`text-3xl font-bold tabular-nums ${fpsColorClass}`}>
+              {formatFps(fpsData.fps)}
+            </span>
+            <span className="text-sm text-muted-foreground ml-1">FPS</span>
+          </div>
+        </div>
+
+        {/* FPS metrics grid */}
+        <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+          {/* Frame Time */}
+          <div className="space-y-0.5 text-center">
+            <span className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+              <Timer className="h-2.5 w-2.5" />
+              Frame Time
+            </span>
+            <p className="font-medium text-xs tabular-nums">
+              {formatFrameTime(fpsData.frame_time)}
+            </p>
+          </div>
+
+          {/* 1% Low */}
+          <div className="space-y-0.5 text-center">
+            <span className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+              <TrendingDown className="h-2.5 w-2.5" />
+              1% Low
+            </span>
+            <p className="font-medium text-xs tabular-nums">
+              {formatFps(fpsData.fps_1_percent_low)}
+            </p>
+          </div>
+
+          {/* 0.1% Low */}
+          <div className="space-y-0.5 text-center">
+            <span className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+              <TrendingDown className="h-2.5 w-2.5" />
+              0.1% Low
+            </span>
+            <p className="font-medium text-xs tabular-nums">
+              {formatFps(fpsData.fps_01_percent_low)}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
