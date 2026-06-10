@@ -1,20 +1,15 @@
-//! Sidecar Manager for LibreHardwareMonitor integration
+//! Sidecar Manager for LibreHardwareMonitor integration.
 //!
 //! Spawns and manages the lhm-sidecar.exe process which provides
 //! CPU/GPU temperature data via LibreHardwareMonitor.
 
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, RwLock};
-use std::thread;
 use std::time::Instant;
-use tauri::Manager;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
+use crate::services::sidecar_runner::{SidecarHandler, SidecarRunner, SidecarWatcherAction};
 
-/// Data from sidecar matching the JSON output format
+/// Data from sidecar matching the JSON output format.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SidecarData {
     pub cpu: Option<SidecarCpuData>,
@@ -50,20 +45,16 @@ pub struct SidecarGpuData {
     pub load: Option<f32>,
 }
 
-/// Sidecar status
+/// Sidecar status.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SidecarStatus {
-    /// Not started yet
     NotStarted,
-    /// Running normally
     Running,
-    /// Stopped (crashed or terminated)
     Stopped,
-    /// Error occurred (e.g., missing admin rights)
     Error(String),
 }
 
-/// Serializable sidecar status for frontend events
+/// Serializable sidecar status for frontend events.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", content = "message")]
 pub enum SidecarStatusInfo {
@@ -87,24 +78,24 @@ impl From<&SidecarStatus> for SidecarStatusInfo {
             SidecarStatus::NotStarted => SidecarStatusInfo::NotStarted,
             SidecarStatus::Running => SidecarStatusInfo::Running,
             SidecarStatus::Stopped => SidecarStatusInfo::Stopped,
-            SidecarStatus::Error(msg) => {
-                // Detect specific error types
-                if msg.to_lowercase().contains("admin")
-                    || msg.to_lowercase().contains("access denied")
-                    || msg.to_lowercase().contains("permission")
+            SidecarStatus::Error(message) => {
+                let lower_message = message.to_lowercase();
+                if lower_message.contains("admin")
+                    || lower_message.contains("access denied")
+                    || lower_message.contains("permission")
                 {
                     SidecarStatusInfo::RequiresAdmin
-                } else if msg.contains("not found") || msg.contains("binary") {
+                } else if message.contains("not found") || message.contains("binary") {
                     SidecarStatusInfo::BinaryNotFound
                 } else {
-                    SidecarStatusInfo::Error(msg.clone())
+                    SidecarStatusInfo::Error(message.clone())
                 }
             }
         }
     }
 }
 
-/// Thread-safe state container for sidecar data
+/// Thread-safe state container for sidecar data.
 pub struct SidecarState {
     data: RwLock<Option<SidecarData>>,
     status: RwLock<SidecarStatus>,
@@ -112,9 +103,7 @@ pub struct SidecarState {
     last_data_time: RwLock<Option<Instant>>,
 }
 
-/// Maximum number of restart attempts before giving up
 const MAX_RESTART_ATTEMPTS: u32 = 3;
-/// How long to wait before considering sidecar stalled (no data received)
 const STALL_TIMEOUT_SECS: u64 = 10;
 
 impl SidecarState {
@@ -127,19 +116,15 @@ impl SidecarState {
         }
     }
 
-    /// Get the latest sidecar data
     pub fn get_data(&self) -> Option<SidecarData> {
-        self.data.read().ok().and_then(|d| d.clone())
+        self.data.read().ok().and_then(|data| data.clone())
     }
 
-    /// Update sidecar data
     pub fn set_data(&self, data: SidecarData) {
-        // Check for error in data
-        if let Some(ref err) = data.error {
-            self.set_status(SidecarStatus::Error(err.clone()));
+        if let Some(error) = &data.error {
+            self.set_status(SidecarStatus::Error(error.clone()));
         }
 
-        // Update last data time
         if let Ok(mut guard) = self.last_data_time.write() {
             *guard = Some(Instant::now());
         }
@@ -149,28 +134,24 @@ impl SidecarState {
         }
     }
 
-    /// Get current status
     pub fn get_status(&self) -> SidecarStatus {
         self.status
             .read()
             .ok()
-            .map(|s| s.clone())
+            .map(|status| status.clone())
             .unwrap_or(SidecarStatus::NotStarted)
     }
 
-    /// Get status info for frontend
     pub fn get_status_info(&self) -> SidecarStatusInfo {
         SidecarStatusInfo::from(&self.get_status())
     }
 
-    /// Update status
     pub fn set_status(&self, status: SidecarStatus) {
         if let Ok(mut guard) = self.status.write() {
             *guard = status;
         }
     }
 
-    /// Increment restart count and return new count
     pub fn increment_restart_count(&self) -> u32 {
         if let Ok(mut guard) = self.restart_count.write() {
             *guard += 1;
@@ -180,24 +161,24 @@ impl SidecarState {
         }
     }
 
-    /// Reset restart count (on successful startup)
     pub fn reset_restart_count(&self) {
         if let Ok(mut guard) = self.restart_count.write() {
             *guard = 0;
         }
     }
 
-    /// Get current restart count
     pub fn get_restart_count(&self) -> u32 {
-        self.restart_count.read().ok().map(|c| *c).unwrap_or(0)
+        self.restart_count
+            .read()
+            .ok()
+            .map(|count| *count)
+            .unwrap_or(0)
     }
 
-    /// Check if we can attempt a restart
     pub fn can_restart(&self) -> bool {
         self.get_restart_count() < MAX_RESTART_ATTEMPTS
     }
 
-    /// Check if sidecar is stalled (not receiving data)
     #[allow(dead_code)]
     pub fn is_stalled(&self) -> bool {
         if let Ok(guard) = self.last_data_time.read() {
@@ -208,24 +189,23 @@ impl SidecarState {
         false
     }
 
-    /// Get CPU temperature from sidecar data
     pub fn get_cpu_temperature(&self) -> Option<f32> {
         self.get_data()
-            .and_then(|d| d.cpu)
-            .and_then(|c| c.temperature)
+            .and_then(|data| data.cpu)
+            .and_then(|cpu| cpu.temperature)
     }
 
-    /// Get CPU core temperatures
     pub fn get_cpu_core_temperatures(&self) -> Vec<Option<f32>> {
         self.get_data()
-            .and_then(|d| d.cpu)
-            .map(|c| c.core_temperatures)
+            .and_then(|data| data.cpu)
+            .map(|cpu| cpu.core_temperatures)
             .unwrap_or_default()
     }
 
-    /// Get CPU power consumption
     pub fn get_cpu_power(&self) -> Option<f32> {
-        self.get_data().and_then(|d| d.cpu).and_then(|c| c.power)
+        self.get_data()
+            .and_then(|data| data.cpu)
+            .and_then(|cpu| cpu.power)
     }
 }
 
@@ -235,331 +215,83 @@ impl Default for SidecarState {
     }
 }
 
-/// Sidecar manager handles spawning and communication with lhm-sidecar
-pub struct SidecarManager {
-    state: Arc<SidecarState>,
-    child: Option<Child>,
-}
+#[derive(Clone, Default)]
+pub struct LhmSidecarHandler;
 
-impl SidecarManager {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(SidecarState::new()),
-            child: None,
+impl SidecarHandler for LhmSidecarHandler {
+    type State = SidecarState;
+    type Output = SidecarData;
+
+    fn label(&self) -> &'static str {
+        "Sidecar"
+    }
+
+    fn binary_name(&self) -> &'static str {
+        "lhm-sidecar-x86_64-pc-windows-msvc.exe"
+    }
+
+    fn args(&self) -> &'static [&'static str] {
+        &["--interval", "1000"]
+    }
+
+    fn restart_limit(&self) -> u32 {
+        MAX_RESTART_ATTEMPTS
+    }
+
+    fn mark_running(&self, state: &Self::State) {
+        state.set_status(SidecarStatus::Running);
+    }
+
+    fn mark_stopped(&self, state: &Self::State) {
+        state.set_status(SidecarStatus::Stopped);
+    }
+
+    fn mark_error(&self, state: &Self::State, error: String) {
+        state.set_status(SidecarStatus::Error(error));
+    }
+
+    fn handle_output(&self, state: &Self::State, output: Self::Output) {
+        if state.get_status() != SidecarStatus::Running {
+            tracing::info!("[Sidecar] Receiving data successfully");
+            state.set_status(SidecarStatus::Running);
+        }
+        state.set_data(output);
+    }
+
+    fn watcher_action(&self, state: &Self::State) -> SidecarWatcherAction {
+        match state.get_status() {
+            SidecarStatus::Running => SidecarWatcherAction::Healthy,
+            SidecarStatus::Stopped => SidecarWatcherAction::Restart,
+            SidecarStatus::Error(_) => SidecarWatcherAction::Stop,
+            SidecarStatus::NotStarted => SidecarWatcherAction::Wait,
         }
     }
 
-    /// Get shared state handle
-    pub fn state(&self) -> Arc<SidecarState> {
-        Arc::clone(&self.state)
+    fn can_restart(&self, state: &Self::State) -> bool {
+        state.can_restart()
     }
 
-    /// Spawn sidecar process from path
-    pub fn spawn_process(&mut self, path: &std::path::Path) -> Result<(), String> {
-        println!("[Sidecar] Starting: {:?}", path);
-
-        let mut child = Command::new(path)
-            .args(["--interval", "1000"]) // 1 second updates
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW on Windows
-            .spawn()
-            .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
-
-        // Get stdout handle
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "Failed to capture stdout".to_string())?;
-
-        self.child = Some(child);
-        self.state.set_status(SidecarStatus::Running);
-
-        // Spawn thread to read output
-        let state = Arc::clone(&self.state);
-        thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-
-            for line in reader.lines() {
-                match line {
-                    Ok(json_line) => {
-                        let json_str: &str = json_line.trim();
-                        if json_str.is_empty() {
-                            continue;
-                        }
-
-                        match serde_json::from_str::<SidecarData>(json_str) {
-                            Ok(data) => {
-                                // Log first successful read
-                                if state.get_status() != SidecarStatus::Running {
-                                    println!("[Sidecar] Receiving data successfully");
-                                    state.set_status(SidecarStatus::Running);
-                                }
-                                state.set_data(data);
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "[Sidecar] JSON parse error: {} - Line: {}",
-                                    e, json_line
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[Sidecar] Read error: {}", e);
-                        break;
-                    }
-                }
-            }
-
-            // Process ended
-            println!("[Sidecar] Process ended");
-            state.set_status(SidecarStatus::Stopped);
-        });
-
-        Ok(())
+    fn increment_restart_count(&self, state: &Self::State) -> u32 {
+        state.increment_restart_count()
     }
 
-    /// Stop the sidecar process
-    pub fn stop(&mut self) {
-        if let Some(ref mut child) = self.child {
-            println!("[Sidecar] Stopping process");
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        self.child = None;
-        self.state.set_status(SidecarStatus::Stopped);
+    fn reset_restart_count(&self, state: &Self::State) {
+        state.reset_restart_count();
     }
 
-    /// Check if sidecar is running
-    #[allow(dead_code)]
-    pub fn is_running(&self) -> bool {
-        matches!(self.state.get_status(), SidecarStatus::Running)
+    fn restart_count(&self, state: &Self::State) -> u32 {
+        state.get_restart_count()
     }
 }
 
-impl Default for SidecarManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub type SidecarManager = SidecarRunner<LhmSidecarHandler>;
 
-impl Drop for SidecarManager {
-    fn drop(&mut self) {
-        self.stop();
-    }
-}
-
-/// Start sidecar and return shared state
-/// Includes auto-restart logic with retry limit
-pub fn start_sidecar(app: &tauri::AppHandle) -> Arc<SidecarState> {
-    let mut manager = SidecarManager::new();
+/// Start sidecar and return both shared state and the owned manager.
+pub fn start_sidecar(app: &tauri::AppHandle) -> (Arc<SidecarState>, SidecarManager) {
+    let manager = SidecarManager::new(LhmSidecarHandler, Arc::new(SidecarState::new()));
     let state = manager.state();
-
-    // Get sidecar path once
-    let sidecar_path = get_sidecar_path(app);
-
-    match &sidecar_path {
-        Ok(path) => match manager.spawn_process(path) {
-            Ok(()) => {
-                println!("[Sidecar] Started successfully");
-                state.reset_restart_count();
-            }
-            Err(e) => {
-                eprintln!("[Sidecar] Failed to start: {}", e);
-                state.set_status(SidecarStatus::Error(e));
-            }
-        },
-        Err(e) => {
-            eprintln!("[Sidecar] Binary not found: {}", e);
-            state.set_status(SidecarStatus::Error(e.clone()));
-        }
-    }
-
-    // Leak manager to keep it alive
-    std::mem::forget(manager);
-
-    // Start watcher thread for auto-restart
-    if let Ok(path) = sidecar_path {
-        let state_clone = Arc::clone(&state);
-        thread::spawn(move || {
-            sidecar_watcher(state_clone, path);
-        });
-    }
-
-    state
-}
-
-/// Get sidecar binary path (production or dev mode)
-fn get_sidecar_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let binary_name = "lhm-sidecar-x86_64-pc-windows-msvc.exe";
-
-    // Try 1: Production path via Tauri resource_dir
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        let prod_path = resource_dir.join("binaries").join(binary_name);
-        println!("[Sidecar] Checking production path: {:?}", prod_path);
-        if prod_path.exists() {
-            return Ok(prod_path);
-        }
-    }
-
-    // Try 2: Development path relative to CARGO_MANIFEST_DIR (set at compile time)
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let dev_path = std::path::Path::new(manifest_dir)
-        .join("binaries")
-        .join(binary_name);
-    println!("[Sidecar] Checking dev path: {:?}", dev_path);
-    if dev_path.exists() {
-        return Ok(dev_path);
-    }
-
-    // Try 3: Fallback - current_dir based paths
-    if let Ok(cwd) = std::env::current_dir() {
-        // If running from project root
-        let root_path = cwd.join("src-tauri").join("binaries").join(binary_name);
-        if root_path.exists() {
-            return Ok(root_path);
-        }
-
-        // If running from src-tauri
-        let src_path = cwd.join("binaries").join(binary_name);
-        if src_path.exists() {
-            return Ok(src_path);
-        }
-    }
-
-    Err(format!(
-        "Sidecar binary not found. Expected at: {:?}",
-        std::path::Path::new(manifest_dir)
-            .join("binaries")
-            .join(binary_name)
-    ))
-}
-
-/// Watcher thread that monitors sidecar and restarts if needed
-fn sidecar_watcher(state: Arc<SidecarState>, path: std::path::PathBuf) {
-    use std::time::Duration;
-
-    // Wait a bit before starting to monitor
-    thread::sleep(Duration::from_secs(5));
-
-    loop {
-        thread::sleep(Duration::from_secs(3));
-
-        let status = state.get_status();
-
-        match status {
-            SidecarStatus::Stopped => {
-                // Sidecar stopped - try to restart
-                if state.can_restart() {
-                    let count = state.increment_restart_count();
-                    println!(
-                        "[Sidecar] Attempting restart {}/{}",
-                        count, MAX_RESTART_ATTEMPTS
-                    );
-
-                    // Wait before restart
-                    thread::sleep(Duration::from_secs(2));
-
-                    // Try to spawn new process
-                    match spawn_standalone(&path, &state) {
-                        Ok(()) => {
-                            println!("[Sidecar] Restart successful");
-                            // Reset count on successful restart after receiving data
-                        }
-                        Err(e) => {
-                            eprintln!("[Sidecar] Restart failed: {}", e);
-                            state.set_status(SidecarStatus::Error(e));
-                        }
-                    }
-                } else {
-                    println!("[Sidecar] Max restart attempts reached, giving up");
-                    state.set_status(SidecarStatus::Error(format!(
-                        "Sidecar crashed {} times, giving up",
-                        MAX_RESTART_ATTEMPTS
-                    )));
-                    break; // Stop monitoring
-                }
-            }
-            SidecarStatus::Running => {
-                // Reset restart count when running successfully
-                if state.get_restart_count() > 0 {
-                    state.reset_restart_count();
-                }
-            }
-            SidecarStatus::Error(_) => {
-                // Error state - stop monitoring
-                break;
-            }
-            SidecarStatus::NotStarted => {
-                // Should not happen, but wait
-            }
-        }
-    }
-
-    println!("[Sidecar] Watcher stopped");
-}
-
-/// Spawn sidecar process standalone (for restart)
-fn spawn_standalone(path: &std::path::Path, state: &Arc<SidecarState>) -> Result<(), String> {
-    println!("[Sidecar] Starting: {:?}", path);
-
-    let mut child = Command::new(path)
-        .args(["--interval", "1000"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .spawn()
-        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Failed to capture stdout".to_string())?;
-
-    state.set_status(SidecarStatus::Running);
-
-    // Spawn reader thread
-    let state_clone = Arc::clone(state);
-    thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-
-        for line in reader.lines() {
-            match line {
-                Ok(json_line) => {
-                    let json_str = json_line.trim();
-                    if json_str.is_empty() {
-                        continue;
-                    }
-
-                    match serde_json::from_str::<SidecarData>(json_str) {
-                        Ok(data) => {
-                            if state_clone.get_status() != SidecarStatus::Running {
-                                println!("[Sidecar] Receiving data successfully");
-                                state_clone.set_status(SidecarStatus::Running);
-                            }
-                            state_clone.set_data(data);
-                        }
-                        Err(e) => {
-                            eprintln!("[Sidecar] JSON parse error: {} - Line: {}", e, json_line);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[Sidecar] Read error: {}", e);
-                    break;
-                }
-            }
-        }
-
-        println!("[Sidecar] Process ended");
-        state_clone.set_status(SidecarStatus::Stopped);
-
-        // Wait for child to fully exit
-        let _ = child.wait();
-    });
-
-    Ok(())
+    manager.start(app);
+    (state, manager)
 }
 
 #[cfg(test)]
