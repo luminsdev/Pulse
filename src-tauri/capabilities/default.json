@@ -15,19 +15,6 @@
     "core:tray:default",
     "core:menu:default",
     "core:image:default",
-    "opener:default",
-    "shell:allow-spawn",
-    "shell:allow-stdin-write",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        {
-          "name": "lhm-sidecar",
-          "cmd": "binaries/lhm-sidecar",
-          "sidecar": true,
-          "args": true
-        }
-      ]
-    }
+    "opener:default"
   ]
 }

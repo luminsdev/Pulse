@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.giahu.pulse",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -26,12 +26,12 @@
         "label": "mini",
         "title": "Pulse Mini",
         "url": "index.html?window=mini",
-        "width": 320,
-        "height": 160,
-        "minWidth": 280,
-        "minHeight": 140,
-        "maxWidth": 400,
-        "maxHeight": 220,
+        "width": 380,
+        "height": 180,
+        "minWidth": 340,
+        "minHeight": 160,
+        "maxWidth": 460,
+        "maxHeight": 240,
         "resizable": true,
         "decorations": false,
         "transparent": true,
@@ -43,14 +43,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "externalBin": [
-      "binaries/lhm-sidecar"
+      "binaries/lhm-sidecar",
+      "binaries/fps-sidecar"
     ],
     "icon": [
       "icons/32x32.png",
