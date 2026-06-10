@@ -8,6 +8,10 @@ export async function getSystemStats(): Promise<SystemStats> {
   return invoke<SystemStats>("get_system_stats");
 }
 
+export async function getLogPath(): Promise<string> {
+  return invoke<string>("get_log_path");
+}
+
 export async function toggleMiniMode(): Promise<void> {
   return invoke("toggle_mini_mode");
 }
