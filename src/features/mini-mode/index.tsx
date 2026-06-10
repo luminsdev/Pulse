@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { CompactWidget } from "./components";
 import { useSystemStats } from "@/features/dashboard/hooks/useSystemStats";
+import { useFpsStats } from "@/features/dashboard/hooks/useFpsStats";
 import { toggleMiniMode } from "@/lib/tauri";
 
 /**
@@ -9,6 +10,7 @@ import { toggleMiniMode } from "@/lib/tauri";
  */
 export function MiniMode() {
   const { stats } = useSystemStats();
+  const { data: fpsData, status: fpsStatus } = useFpsStats();
 
   const handleExpand = useCallback(() => {
     toggleMiniMode().catch(console.error);
@@ -16,7 +18,12 @@ export function MiniMode() {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-transparent">
-      <CompactWidget stats={stats} onExpand={handleExpand} />
+      <CompactWidget
+        stats={stats}
+        onExpand={handleExpand}
+        fpsData={fpsData}
+        fpsStatus={fpsStatus}
+      />
     </div>
   );
 }

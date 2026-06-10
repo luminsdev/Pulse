@@ -1,11 +1,13 @@
 import { motion } from "framer-motion";
-import { Cpu, MemoryStick, Gpu, Maximize2, X } from "lucide-react";
-import type { SystemStats } from "@/types/stats";
+import { Cpu, MemoryStick, Gpu, Maximize2, X, Gamepad2 } from "lucide-react";
+import type { SystemStatsPayload, FpsData, FpsSidecarStatusType } from "@/types/stats";
 import { hideMiniWindow, showMainWindow } from "@/lib/tauri";
 
 interface CompactWidgetProps {
-  stats: SystemStats | null;
+  stats: SystemStatsPayload | null;
   onExpand: () => void;
+  fpsData?: FpsData | null;
+  fpsStatus?: FpsSidecarStatusType;
 }
 
 /** Format bytes to GB with 1 decimal */
@@ -21,11 +23,21 @@ function getUsageColor(value: number): string {
   return "#22c55e"; // green-500
 }
 
+/** Get color based on FPS value */
+function getFpsRingColor(fps: number): string {
+  if (fps >= 60) return "#22c55e"; // green-500
+  if (fps >= 45) return "#3b82f6"; // blue-500
+  if (fps >= 30) return "#f59e0b"; // amber-500
+  if (fps > 0) return "#ef4444"; // red-500
+  return COLORS.fps;
+}
+
 /** Color constants for sub-labels */
 const COLORS = {
   temp: "#f97316",    // orange-500 - warm color for temperature
   power: "#eab308",   // yellow-500 - energy color
   ram: "#38bdf8",     // sky-400 - cool color for memory
+  fps: "#a855f7",     // purple-500 - gaming color
   separator: "rgba(255, 255, 255, 0.3)",
 } as const;
 
@@ -92,7 +104,7 @@ function RingProgress({
  * Compact overlay widget for mini mode
  * Modern design with ring progress indicators
  */
-export function CompactWidget({ stats, onExpand }: CompactWidgetProps) {
+export function CompactWidget({ stats, onExpand, fpsData, fpsStatus = "not_started" }: CompactWidgetProps) {
   const cpu = stats?.cpu;
   const ram = stats?.ram;
   const gpu = stats?.gpu;
@@ -100,6 +112,12 @@ export function CompactWidget({ stats, onExpand }: CompactWidgetProps) {
   const cpuValue = cpu?.usage ?? 0;
   const ramValue = ram?.usage_percent ?? 0;
   const gpuValue = gpu?.usage ?? 0;
+  
+  // FPS display - show FPS value as percentage of 60 FPS target for the ring
+  const fpsValue = fpsData?.fps ?? 0;
+  const fpsRingValue = Math.min((fpsValue / 144) * 100, 100); // 144 FPS as max for ring
+  const hasFps = fpsStatus === "running" && fpsData != null;
+  const fpsColor = hasFps ? getFpsRingColor(fpsValue) : "#525252";
 
   const handleClose = async () => {
     try {
@@ -154,8 +172,8 @@ export function CompactWidget({ stats, onExpand }: CompactWidgetProps) {
           </div>
         </div>
 
-        {/* Metrics - 3 ring indicators */}
-        <div className="relative z-10 flex items-center justify-center gap-5 px-4 pb-3.5 pt-0.5">
+        {/* Metrics - 4 ring indicators */}
+        <div className="relative z-10 grid grid-cols-4 gap-4 px-3 pb-3.5 pt-0.5 place-items-center">
           {/* CPU */}
           <MetricRing
             icon={<Cpu className="h-4 w-4" />}
@@ -189,6 +207,17 @@ export function CompactWidget({ stats, onExpand }: CompactWidgetProps) {
               gpu ? <TempPowerLabel temp={gpu.temperature} power={gpu.power} /> : undefined
             }
           />
+
+          {/* FPS */}
+          <MetricRing
+            icon={<Gamepad2 className="h-4 w-4" />}
+            label="FPS"
+            value={fpsRingValue}
+            color={fpsColor}
+            disabled={!hasFps}
+            displayValue={hasFps ? `${Math.round(fpsValue)}` : undefined}
+            subLabelContent={!hasFps ? <FpsStatusLabel status={fpsStatus} /> : undefined}
+          />
         </div>
       </div>
     </motion.div>
@@ -196,9 +225,9 @@ export function CompactWidget({ stats, onExpand }: CompactWidgetProps) {
 }
 
 /** Temperature and Power label with colors */
-function TempPowerLabel({ temp, power }: { temp?: number; power?: number }) {
-  const hasTemp = temp !== undefined && temp > 0;
-  const hasPower = power !== undefined && power > 0;
+function TempPowerLabel({ temp, power }: { temp?: number | null; power?: number | null }) {
+  const hasTemp = temp != null && temp > 0;
+  const hasPower = power != null && power > 0;
 
   if (!hasTemp && !hasPower) {
     return null;
@@ -228,6 +257,37 @@ function RamLabel({ used, total }: { used: number; total: number }) {
   );
 }
 
+/** FPS status label for mini mode */
+function FpsStatusLabel({ status }: { status: FpsSidecarStatusType }) {
+  let text = "FPS";
+
+  switch (status) {
+    case "no_game":
+      text = "No game";
+      break;
+    case "not_installed":
+      text = "No PM";
+      break;
+    case "error":
+      text = "Error";
+      break;
+    case "stopped":
+      text = "Stopped";
+      break;
+    case "not_started":
+      text = "Init";
+      break;
+    default:
+      text = "FPS";
+  }
+
+  return (
+    <span className="text-[11px] text-white/40 font-medium">
+      {text}
+    </span>
+  );
+}
+
 interface MetricRingProps {
   icon: React.ReactNode;
   label: string;
@@ -235,6 +295,7 @@ interface MetricRingProps {
   color: string;
   disabled?: boolean;
   subLabelContent?: React.ReactNode;
+  displayValue?: string;
 }
 
 function MetricRing({
@@ -244,6 +305,7 @@ function MetricRing({
   color,
   disabled,
   subLabelContent,
+  displayValue,
 }: MetricRingProps) {
   return (
     <motion.div 
@@ -263,7 +325,9 @@ function MetricRing({
       <div className="flex flex-col items-center">
         {/* Percentage value - larger and more prominent */}
         <span className="text-[15px] font-semibold text-white/95 tabular-nums leading-none tracking-tight">
-          {disabled ? "—" : `${Math.round(value)}%`}
+          {disabled
+            ? "—"
+            : displayValue ?? `${Math.round(value)}%`}
         </span>
         {/* Sub-label: colored temp/power or RAM usage */}
         <div className="mt-1 min-h-[14px] flex items-center justify-center">

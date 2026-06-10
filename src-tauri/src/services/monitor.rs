@@ -1,9 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use sysinfo::{
-    CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System,
-};
+use sysinfo::{CpuRefreshKind, MemoryRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
-use crate::models::{CpuStats, GpuStats, ProcessInfo, RamStats, SystemInfo, SystemStats};
+use crate::models::{
+    CpuStats, GpuStats, ProcessInfo, RamStats, SystemInfo, SystemStats, SystemStatsPayload,
+};
 
 /// GPU monitoring service using NVML (NVIDIA Management Library)
 pub struct GpuMonitor {
@@ -82,8 +82,7 @@ impl SystemMonitor {
         let system = System::new_with_specifics(
             RefreshKind::nothing()
                 .with_cpu(CpuRefreshKind::everything())
-                .with_memory(MemoryRefreshKind::everything())
-                .with_processes(ProcessRefreshKind::everything()),
+                .with_memory(MemoryRefreshKind::everything()),
         );
 
         Self {
@@ -94,8 +93,18 @@ impl SystemMonitor {
 
     /// Refresh all system information
     pub fn refresh(&mut self) {
+        self.refresh_stats();
+        self.refresh_processes();
+    }
+
+    /// Refresh high-frequency CPU/RAM metrics.
+    pub fn refresh_stats(&mut self) {
         self.system.refresh_cpu_all();
         self.system.refresh_memory();
+    }
+
+    /// Refresh process data separately from high-frequency metrics.
+    pub fn refresh_processes(&mut self) {
         self.system.refresh_processes(ProcessesToUpdate::All, true);
     }
 
@@ -245,6 +254,21 @@ impl SystemMonitor {
             gpu: self.get_gpu_stats(),
             system_info: self.get_system_info(),
             processes: self.get_top_processes(10), // Top 10 processes
+            timestamp,
+        }
+    }
+
+    /// Get lightweight system statistics for the high-frequency event stream.
+    pub fn get_system_stats_payload(&self) -> SystemStatsPayload {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        SystemStatsPayload {
+            cpu: self.get_cpu_stats(),
+            ram: self.get_ram_stats(),
+            gpu: self.get_gpu_stats(),
             timestamp,
         }
     }

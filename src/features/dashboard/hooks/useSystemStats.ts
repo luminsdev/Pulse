@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
-import type { SystemStats } from "@/types/stats";
+import type { SystemStatsPayload } from "@/types/stats";
 
 /** Data point for time-series charts */
 export interface StatsHistoryPoint {
@@ -16,7 +16,7 @@ const MAX_HISTORY_LENGTH = 60;
 /** Return type for useSystemStats hook */
 export interface UseSystemStatsReturn {
   /** Current system stats (latest) */
-  stats: SystemStats | null;
+  stats: SystemStatsPayload | null;
   /** Historical data points for charts */
   history: StatsHistoryPoint[];
   /** Whether we're receiving data */
@@ -32,13 +32,13 @@ export interface UseSystemStatsReturn {
  * - Provides connection status
  */
 export function useSystemStats(): UseSystemStatsReturn {
-  const [stats, setStats] = useState<SystemStats | null>(null);
+  const [stats, setStats] = useState<SystemStatsPayload | null>(null);
   const [history, setHistory] = useState<StatsHistoryPoint[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Handler for incoming system stats
-  const handleStats = useCallback((payload: SystemStats) => {
+  const handleStats = useCallback((payload: SystemStatsPayload) => {
     setStats(payload);
     setIsConnected(true);
     setError(null);
@@ -62,7 +62,7 @@ export function useSystemStats(): UseSystemStatsReturn {
   }, []);
 
   // Listen to Tauri events
-  useTauriEvent<SystemStats>("system-stats", handleStats);
+  useTauriEvent<SystemStatsPayload>("system-stats", handleStats);
 
   // Memoize return value to prevent unnecessary re-renders
   const result = useMemo(

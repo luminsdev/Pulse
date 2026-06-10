@@ -73,6 +73,15 @@ pub struct SystemStats {
     pub timestamp: u64, // Unix timestamp in milliseconds
 }
 
+/// Lightweight high-frequency system statistics event payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemStatsPayload {
+    pub cpu: CpuStats,
+    pub ram: RamStats,
+    pub gpu: Option<GpuStats>,
+    pub timestamp: u64, // Unix timestamp in milliseconds
+}
+
 impl Default for CpuStats {
     fn default() -> Self {
         Self {
@@ -142,6 +151,17 @@ impl Default for SystemStats {
             gpu: None,
             system_info: SystemInfo::default(),
             processes: Vec::new(),
+            timestamp: 0,
+        }
+    }
+}
+
+impl Default for SystemStatsPayload {
+    fn default() -> Self {
+        Self {
+            cpu: CpuStats::default(),
+            ram: RamStats::default(),
+            gpu: None,
             timestamp: 0,
         }
     }
