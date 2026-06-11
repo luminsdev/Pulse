@@ -50,5 +50,7 @@ Thumbs.db
 PresentMon-v2.4.1.msi
 
 # Docs / Superpowers
-docs/superpowers/plans/
-docs/superpowers/specs/
+docs/superpowers/plans/*
+docs/superpowers/specs/*
+!docs/superpowers/plans/.gitkeep
+!docs/superpowers/specs/.gitkeep
