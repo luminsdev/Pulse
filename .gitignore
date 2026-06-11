@@ -47,3 +47,8 @@ skills-lock.json
 *.bak
 *.tmp
 Thumbs.db
+PresentMon-v2.4.1.msi
+
+# Docs / Superpowers
+docs/superpowers/plans/
+docs/superpowers/specs/
