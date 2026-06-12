@@ -13,11 +13,11 @@ mod services;
 mod utils;
 
 use commands::{
-    get_log_path, get_system_stats, has_gpu_support, hide_mini_window, show_main_window,
-    toggle_mini_mode, MonitorState,
+    get_fps_monitoring_status, get_log_path, get_system_stats, has_gpu_support, hide_mini_window,
+    show_main_window, start_fps_monitoring, stop_fps_monitoring, toggle_mini_mode, MonitorState,
 };
 use services::{
-    start_fps_emitter, start_fps_sidecar, start_sidecar, FpsSidecarManager, FpsSidecarState,
+    create_fps_sidecar, start_fps_emitter, start_sidecar, FpsSidecarManager, FpsSidecarState,
     SidecarManager, SidecarState, SidecarStatusInfo, SystemMonitor,
 };
 
@@ -73,7 +73,8 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
 
                     // Core temperatures - filter out None values
                     if !cpu_data.core_temperatures.is_empty() {
-                        let temps: Vec<f32> = cpu_data.core_temperatures
+                        let temps: Vec<f32> = cpu_data
+                            .core_temperatures
                             .iter()
                             .filter_map(|t| *t)
                             .collect();
@@ -107,7 +108,12 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
                             name: gpu_data
                                 .name
                                 .clone()
-                                .or_else(|| gpu_data.vendor.as_ref().map(|vendor| format!("{} GPU", vendor)))
+                                .or_else(|| {
+                                    gpu_data
+                                        .vendor
+                                        .as_ref()
+                                        .map(|vendor| format!("{} GPU", vendor))
+                                })
                                 .unwrap_or_else(|| "Unknown GPU".to_string()),
                             usage: gpu_data.load.unwrap_or(0.0),
                             memory_total: 0,
@@ -176,15 +182,14 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
     let mini_item = MenuItem::with_id(app, "mini", "Mini Mode", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    
+
     // Create menu
     let menu = Menu::with_items(app, &[&show_item, &mini_item, &quit_item])?;
-    
+
     // Load tray icon - use include_bytes for embedded icon
     let icon_bytes = include_bytes!("../icons/32x32.png");
-    let icon = tauri::image::Image::from_bytes(icon_bytes)
-        .expect("Failed to load tray icon");
-    
+    let icon = tauri::image::Image::from_bytes(icon_bytes).expect("Failed to load tray icon");
+
     // Build tray
     let _tray = TrayIconBuilder::new()
         .icon(icon)
@@ -230,7 +235,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .build(app)?;
-    
+
     tracing::info!("[Tray] System tray initialized");
     Ok(())
 }
@@ -246,25 +251,28 @@ pub fn run() {
             get_system_stats,
             get_log_path,
             has_gpu_support,
+            start_fps_monitoring,
+            stop_fps_monitoring,
+            get_fps_monitoring_status,
             toggle_mini_mode,
             show_main_window,
             hide_mini_window,
         ])
         .setup(|app| {
             tracing::info!("[App] Starting hardware monitor...");
-            
+
             // Setup system tray
             if let Err(e) = setup_tray(app) {
                 tracing::error!("[Tray] Failed to setup tray: {}", e);
             }
-            
+
             // Start the sidecar for temperature monitoring
             // The sidecar runs as elevated process and provides sensor data
             let (sidecar_state, sidecar_manager) = start_sidecar(app.handle());
-             
-            // Start the FPS sidecar for game FPS monitoring
-            let (fps_sidecar_state, fps_sidecar_manager) = start_fps_sidecar(app.handle());
-             
+
+            // Create the FPS sidecar manager lazily; the process starts on demand.
+            let (fps_sidecar_state, fps_sidecar_manager) = create_fps_sidecar();
+
             // Store sidecar states for later access
             app.manage(AppState {
                 sidecar: sidecar_state.clone(),
@@ -272,13 +280,13 @@ pub fn run() {
             });
             app.manage(Mutex::new(sidecar_manager));
             app.manage(Mutex::new(fps_sidecar_manager));
-            
+
             // Start the background stats emitter
             start_stats_emitter(app.handle().clone(), sidecar_state);
-            
+
             // Start the FPS stats emitter
             start_fps_emitter(app.handle().clone(), fps_sidecar_state);
-            
+
             // Handle window close event - hide to tray instead of quit
             let main_window = app.get_webview_window("main");
             if let Some(window) = main_window {

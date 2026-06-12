@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -25,6 +25,7 @@ pub enum SidecarWatcherAction {
     Healthy,
     Restart,
     Stop,
+    StopProcess,
     Wait,
 }
 
@@ -54,6 +55,7 @@ pub struct SidecarRunner<H: SidecarHandler> {
     state: Arc<H::State>,
     child: Arc<Mutex<Option<Child>>>,
     stop_requested: Arc<AtomicBool>,
+    watcher_generation: Arc<AtomicU64>,
 }
 
 impl<H: SidecarHandler> SidecarRunner<H> {
@@ -63,6 +65,7 @@ impl<H: SidecarHandler> SidecarRunner<H> {
             state,
             child: Arc::new(Mutex::new(None)),
             stop_requested: Arc::new(AtomicBool::new(false)),
+            watcher_generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -91,7 +94,8 @@ impl<H: SidecarHandler> SidecarRunner<H> {
         }
 
         if let Ok(path) = path {
-            self.start_watcher(path);
+            let generation = self.watcher_generation.fetch_add(1, Ordering::SeqCst) + 1;
+            self.start_watcher(path, generation);
         }
     }
 
@@ -119,16 +123,9 @@ impl<H: SidecarHandler> SidecarRunner<H> {
     }
 
     pub fn stop(&self) {
+        self.watcher_generation.fetch_add(1, Ordering::SeqCst);
         self.stop_requested.store(true, Ordering::SeqCst);
-
-        if let Ok(mut guard) = self.child.lock() {
-            if let Some(mut child) = guard.take() {
-                tracing::info!("[{}] Stopping process", self.handler.label());
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-        }
-
+        stop_child(&self.handler, &self.child);
         self.handler.mark_stopped(&self.state);
     }
 
@@ -176,17 +173,26 @@ impl<H: SidecarHandler> SidecarRunner<H> {
         ))
     }
 
-    fn start_watcher(&self, path: PathBuf) {
+    fn start_watcher(&self, path: PathBuf, generation: u64) {
         let handler = self.handler.clone();
         let state = Arc::clone(&self.state);
         let child = Arc::clone(&self.child);
         let stop_requested = Arc::clone(&self.stop_requested);
+        let watcher_generation = Arc::clone(&self.watcher_generation);
 
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(WATCHER_START_DELAY_SECS));
 
-            while !stop_requested.load(Ordering::SeqCst) {
+            while !stop_requested.load(Ordering::SeqCst)
+                && watcher_generation.load(Ordering::SeqCst) == generation
+            {
                 thread::sleep(Duration::from_secs(WATCHER_INTERVAL_SECS));
+
+                if stop_requested.load(Ordering::SeqCst)
+                    || watcher_generation.load(Ordering::SeqCst) != generation
+                {
+                    break;
+                }
 
                 match handler.watcher_action(&state) {
                     SidecarWatcherAction::Restart => {
@@ -207,9 +213,15 @@ impl<H: SidecarHandler> SidecarRunner<H> {
                                 Arc::clone(&stop_requested),
                                 &path,
                             ) {
-                                Ok(()) => tracing::info!("[{}] Restart successful", handler.label()),
+                                Ok(()) => {
+                                    tracing::info!("[{}] Restart successful", handler.label())
+                                }
                                 Err(error) => {
-                                    tracing::error!("[{}] Restart failed: {}", handler.label(), error);
+                                    tracing::error!(
+                                        "[{}] Restart failed: {}",
+                                        handler.label(),
+                                        error
+                                    );
                                     handler.mark_error(&state, error);
                                 }
                             }
@@ -233,6 +245,12 @@ impl<H: SidecarHandler> SidecarRunner<H> {
                             handler.reset_restart_count(&state);
                         }
                     }
+                    SidecarWatcherAction::StopProcess => {
+                        stop_requested.store(true, Ordering::SeqCst);
+                        stop_child(&handler, &child);
+                        handler.mark_stopped(&state);
+                        break;
+                    }
                     SidecarWatcherAction::Stop => break,
                     SidecarWatcherAction::Wait => {}
                 }
@@ -246,6 +264,16 @@ impl<H: SidecarHandler> SidecarRunner<H> {
 impl<H: SidecarHandler> Drop for SidecarRunner<H> {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+fn stop_child<H: SidecarHandler>(handler: &H, child_slot: &Arc<Mutex<Option<Child>>>) {
+    if let Ok(mut guard) = child_slot.lock() {
+        if let Some(mut child) = guard.take() {
+            tracing::info!("[{}] Stopping process", handler.label());
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
@@ -460,10 +488,19 @@ mod tests {
         let state = TestState::default();
         let handler = TestHandler;
 
-        assert_eq!(handler.watcher_action(&state), SidecarWatcherAction::Restart);
+        assert_eq!(
+            handler.watcher_action(&state),
+            SidecarWatcherAction::Restart
+        );
         handler.mark_running(&state);
-        assert_eq!(handler.watcher_action(&state), SidecarWatcherAction::Healthy);
+        assert_eq!(
+            handler.watcher_action(&state),
+            SidecarWatcherAction::Healthy
+        );
         handler.mark_stopped(&state);
-        assert_eq!(handler.watcher_action(&state), SidecarWatcherAction::Restart);
+        assert_eq!(
+            handler.watcher_action(&state),
+            SidecarWatcherAction::Restart
+        );
     }
 }

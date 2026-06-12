@@ -1,5 +1,10 @@
 import { useState, useCallback, useMemo } from "react";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
+import {
+  getFpsMonitoringStatus,
+  startFpsMonitoring,
+  stopFpsMonitoring,
+} from "@/lib/tauri";
 import type {
   FpsData,
   FpsEventPayload,
@@ -34,6 +39,14 @@ export interface UseFpsStatsReturn {
   isActive: boolean;
   /** Whether no game is detected */
   isNoGame: boolean;
+  /** Whether a start command is in flight */
+  isStarting: boolean;
+  /** Whether a stop command is in flight */
+  isStopping: boolean;
+  /** Start the FPS sidecar process */
+  startMonitoring: () => Promise<void>;
+  /** Stop the FPS sidecar process */
+  stopMonitoring: () => Promise<void>;
 }
 
 /**
@@ -48,6 +61,8 @@ export function useFpsStats(): UseFpsStatsReturn {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [presentMonInstalled, setPresentMonInstalled] = useState(true);
   const [history, setHistory] = useState<FpsHistoryPoint[]>([]);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
 
   // Handler for incoming FPS stats events
   const handleFpsStats = useCallback((payload: FpsEventPayload) => {
@@ -89,6 +104,37 @@ export function useFpsStats(): UseFpsStatsReturn {
     }
   }, []);
 
+  const refreshStatus = useCallback(async () => {
+    const payload = await getFpsMonitoringStatus();
+    handleFpsStats(payload);
+  }, [handleFpsStats]);
+
+  const startMonitoring = useCallback(async () => {
+    setIsStarting(true);
+
+    try {
+      await startFpsMonitoring();
+      await refreshStatus();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsStarting(false);
+    }
+  }, [refreshStatus]);
+
+  const stopMonitoring = useCallback(async () => {
+    setIsStopping(true);
+
+    try {
+      await stopFpsMonitoring();
+      await refreshStatus();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsStopping(false);
+    }
+  }, [refreshStatus]);
+
   // Listen to Tauri events
   useTauriEvent<FpsEventPayload>("fps-stats", handleFpsStats);
 
@@ -106,8 +152,24 @@ export function useFpsStats(): UseFpsStatsReturn {
       history,
       isActive,
       isNoGame,
+      isStarting,
+      isStopping,
+      startMonitoring,
+      stopMonitoring,
     }),
-    [data, status, errorMessage, presentMonInstalled, history, isActive, isNoGame]
+    [
+      data,
+      status,
+      errorMessage,
+      presentMonInstalled,
+      history,
+      isActive,
+      isNoGame,
+      isStarting,
+      isStopping,
+      startMonitoring,
+      stopMonitoring,
+    ]
   );
 
   return result;

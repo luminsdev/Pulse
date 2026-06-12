@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SystemStats } from "@/types/stats";
+import type { FpsEventPayload, SystemStats } from "@/types/stats";
 
 /**
  * Type-safe wrapper for Tauri invoke commands
@@ -22,4 +22,16 @@ export async function showMainWindow(): Promise<void> {
 
 export async function hideMiniWindow(): Promise<void> {
   return invoke("hide_mini_window");
+}
+
+export async function startFpsMonitoring(): Promise<void> {
+  return invoke("start_fps_monitoring");
+}
+
+export async function stopFpsMonitoring(): Promise<void> {
+  return invoke("stop_fps_monitoring");
+}
+
+export async function getFpsMonitoringStatus(): Promise<FpsEventPayload> {
+  return invoke<FpsEventPayload>("get_fps_monitoring_status");
 }

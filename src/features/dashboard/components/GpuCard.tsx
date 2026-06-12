@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MonitorSpeaker, Thermometer, Fan, Gauge, Zap, Clock, Gamepad2, Timer, TrendingDown, AlertCircle, Download } from "lucide-react";
+import { MonitorSpeaker, Thermometer, Fan, Gauge, Zap, Clock, Gamepad2, Timer, TrendingDown, AlertCircle, Download, Play, Square } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { SystemChart, CircularProgress, ProgressBar, type ChartDataPoint } from "@/components/charts";
 import {
   formatBytes,
@@ -32,8 +33,18 @@ interface GpuCardProps {
   fpsData?: FpsData | null;
   /** FPS monitoring status */
   fpsStatus?: FpsSidecarStatusType;
+  /** FPS error message from backend */
+  fpsErrorMessage?: string | null;
   /** Whether PresentMon is installed */
   presentMonInstalled?: boolean;
+  /** Whether a start command is in flight */
+  isFpsStarting?: boolean;
+  /** Whether a stop command is in flight */
+  isFpsStopping?: boolean;
+  /** Start FPS monitoring */
+  onStartFpsMonitoring?: () => Promise<void>;
+  /** Stop FPS monitoring */
+  onStopFpsMonitoring?: () => Promise<void>;
 }
 
 /**
@@ -46,7 +57,12 @@ export function GpuCard({
   isAvailable = true,
   fpsData,
   fpsStatus = "not_started",
+  fpsErrorMessage,
   presentMonInstalled = true,
+  isFpsStarting = false,
+  isFpsStopping = false,
+  onStartFpsMonitoring,
+  onStopFpsMonitoring,
 }: GpuCardProps) {
   // Prepare chart data
   const chartData: ChartDataPoint[] = useMemo(() => {
@@ -244,7 +260,12 @@ export function GpuCard({
           <FpsSection 
             fpsData={fpsData}
             fpsStatus={fpsStatus}
+            fpsErrorMessage={fpsErrorMessage}
             presentMonInstalled={presentMonInstalled}
+            isStarting={isFpsStarting}
+            isStopping={isFpsStopping}
+            onStartMonitoring={onStartFpsMonitoring}
+            onStopMonitoring={onStopFpsMonitoring}
           />
 
           {/* Usage indicator */}
@@ -276,22 +297,89 @@ export function GpuCard({
 interface FpsSectionProps {
   fpsData?: FpsData | null;
   fpsStatus: FpsSidecarStatusType;
+  fpsErrorMessage?: string | null;
   presentMonInstalled: boolean;
+  isStarting: boolean;
+  isStopping: boolean;
+  onStartMonitoring?: () => Promise<void>;
+  onStopMonitoring?: () => Promise<void>;
+}
+
+function FpsSectionHeader({
+  active,
+  onStartMonitoring,
+  onStopMonitoring,
+  isStarting,
+  isStopping,
+}: {
+  active: boolean;
+  onStartMonitoring?: () => Promise<void>;
+  onStopMonitoring?: () => Promise<void>;
+  isStarting: boolean;
+  isStopping: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <div className="flex items-center gap-2">
+        <Gamepad2 className={`h-4 w-4 ${active ? "text-emerald-500" : "text-muted-foreground"}`} />
+        <span className="text-muted-foreground font-medium">FPS Monitoring</span>
+      </div>
+      {active ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-[11px]"
+          disabled={isStopping || !onStopMonitoring}
+          onClick={() => void onStopMonitoring?.()}
+        >
+          <Square className="h-3 w-3" />
+          {isStopping ? "Stopping" : "Stop"}
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="h-7 px-2 text-[11px]"
+          disabled={isStarting || !onStartMonitoring}
+          onClick={() => void onStartMonitoring?.()}
+        >
+          <Play className="h-3 w-3" />
+          {isStarting ? "Starting" : "Start"}
+        </Button>
+      )}
+    </div>
+  );
 }
 
 /** 
  * FPS monitoring section within GPU card 
  * Shows current FPS, frame time, and low percentiles
  */
-function FpsSection({ fpsData, fpsStatus, presentMonInstalled }: FpsSectionProps) {
+function FpsSection({
+  fpsData,
+  fpsStatus,
+  fpsErrorMessage,
+  presentMonInstalled,
+  isStarting,
+  isStopping,
+  onStartMonitoring,
+  onStopMonitoring,
+}: FpsSectionProps) {
+  const isMonitoring = fpsStatus === "running" || fpsStatus === "no_game";
+
   // PresentMon not installed - show install prompt
   if (!presentMonInstalled || fpsStatus === "not_installed") {
     return (
       <div className="pt-3 border-t border-border/50">
-        <div className="flex items-center gap-2 text-sm">
-          <Gamepad2 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
-        </div>
+        <FpsSectionHeader
+          active={false}
+          isStarting={isStarting}
+          isStopping={isStopping}
+          onStartMonitoring={onStartMonitoring}
+          onStopMonitoring={onStopMonitoring}
+        />
         <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-border/50">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
@@ -319,10 +407,13 @@ function FpsSection({ fpsData, fpsStatus, presentMonInstalled }: FpsSectionProps
   if (fpsStatus === "no_game" || (fpsStatus === "running" && !fpsData)) {
     return (
       <div className="pt-3 border-t border-border/50">
-        <div className="flex items-center gap-2 text-sm">
-          <Gamepad2 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
-        </div>
+        <FpsSectionHeader
+          active={isMonitoring}
+          isStarting={isStarting}
+          isStopping={isStopping}
+          onStartMonitoring={onStartMonitoring}
+          onStopMonitoring={onStopMonitoring}
+        />
         <div className="mt-2 flex items-center justify-center py-4 text-muted-foreground">
           <div className="text-center">
             <Gamepad2 className="h-6 w-6 mx-auto mb-1 opacity-50" />
@@ -338,13 +429,18 @@ function FpsSection({ fpsData, fpsStatus, presentMonInstalled }: FpsSectionProps
   if (fpsStatus === "not_started" || fpsStatus === "stopped") {
     return (
       <div className="pt-3 border-t border-border/50">
-        <div className="flex items-center gap-2 text-sm">
-          <Gamepad2 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
-        </div>
+        <FpsSectionHeader
+          active={false}
+          isStarting={isStarting}
+          isStopping={isStopping}
+          onStartMonitoring={onStartMonitoring}
+          onStopMonitoring={onStopMonitoring}
+        />
         <div className="mt-2 flex items-center justify-center py-3 text-muted-foreground">
           <p className="text-xs">
-            {fpsStatus === "not_started" ? "Initializing..." : "Stopped"}
+            {fpsStatus === "not_started"
+              ? "Start FPS monitoring when you need game telemetry"
+              : "FPS monitoring stopped"}
           </p>
         </div>
       </div>
@@ -353,15 +449,32 @@ function FpsSection({ fpsData, fpsStatus, presentMonInstalled }: FpsSectionProps
 
   // Error state
   if (fpsStatus === "error") {
+    const isAdminError = fpsErrorMessage?.includes("administrator") || fpsErrorMessage?.includes("admin");
     return (
       <div className="pt-3 border-t border-border/50">
-        <div className="flex items-center gap-2 text-sm">
-          <Gamepad2 className="h-4 w-4 text-red-500" />
-          <span className="text-muted-foreground font-medium">FPS Monitoring</span>
-        </div>
-        <div className="mt-2 flex items-center gap-2 p-2 rounded bg-red-500/10">
-          <AlertCircle className="h-3 w-3 text-red-500" />
-          <p className="text-xs text-red-500">Error reading FPS data</p>
+        <FpsSectionHeader
+          active={false}
+          isStarting={isStarting}
+          isStopping={isStopping}
+          onStartMonitoring={onStartMonitoring}
+          onStopMonitoring={onStopMonitoring}
+        />
+        <div className="mt-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-xs text-amber-200/90">
+                {isAdminError
+                  ? "Run Pulse as Administrator to enable FPS tracking"
+                  : fpsErrorMessage || "Error reading FPS data"}
+              </p>
+              {isAdminError && (
+                <p className="text-[10px] text-muted-foreground">
+                  Or add your user to the "Performance Log Users" group
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -375,11 +488,22 @@ function FpsSection({ fpsData, fpsStatus, presentMonInstalled }: FpsSectionProps
     return (
       <div className="pt-3 border-t border-border/50">
         {/* Header with game name */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm">
             <Gamepad2 className="h-4 w-4" style={{ color: fpsColor }} />
             <span className="text-muted-foreground font-medium">FPS</span>
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            disabled={isStopping || !onStopMonitoring}
+            onClick={() => void onStopMonitoring?.()}
+          >
+            <Square className="h-3 w-3" />
+            {isStopping ? "Stopping" : "Stop"}
+          </Button>
           <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
             {fpsData.process_name}
           </span>

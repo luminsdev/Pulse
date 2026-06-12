@@ -26,7 +26,16 @@ export function Dashboard() {
   const { info: systemInfo } = useSystemInfo();
   const { processes } = useProcessList();
   const { status: sidecarStatus, message: sidecarMessage, showWarning } = useSidecarStatus();
-  const { data: fpsData, status: fpsStatus, presentMonInstalled } = useFpsStats();
+  const {
+    data: fpsData,
+    status: fpsStatus,
+    errorMessage: fpsErrorMessage,
+    presentMonInstalled,
+    isStarting: isFpsStarting,
+    isStopping: isFpsStopping,
+    startMonitoring: startFpsMonitoring,
+    stopMonitoring: stopFpsMonitoring,
+  } = useFpsStats();
   const [warningDismissed, setWarningDismissed] = useState(false);
 
   const handleDismissWarning = useCallback(() => {
@@ -81,7 +90,12 @@ export function Dashboard() {
             isAvailable={stats?.gpu != null}
             fpsData={fpsData}
             fpsStatus={fpsStatus}
+            fpsErrorMessage={fpsErrorMessage}
             presentMonInstalled={presentMonInstalled}
+            isFpsStarting={isFpsStarting}
+            isFpsStopping={isFpsStopping}
+            onStartFpsMonitoring={startFpsMonitoring}
+            onStopFpsMonitoring={stopFpsMonitoring}
           />
         </CardErrorBoundary>
       </div>

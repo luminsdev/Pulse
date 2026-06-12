@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 use crate::models::fps::{
@@ -19,10 +19,12 @@ pub struct FpsSidecarState {
     status: RwLock<FpsSidecarStatus>,
     restart_count: RwLock<u32>,
     last_data_time: RwLock<Option<Instant>>,
+    no_game_since: RwLock<Option<Instant>>,
     present_mon_installed: RwLock<bool>,
 }
 
 const MAX_RESTART_ATTEMPTS: u32 = 3;
+const NO_GAME_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
 impl FpsSidecarState {
     pub fn new() -> Self {
@@ -31,6 +33,7 @@ impl FpsSidecarState {
             status: RwLock::new(FpsSidecarStatus::NotStarted),
             restart_count: RwLock::new(0),
             last_data_time: RwLock::new(None),
+            no_game_since: RwLock::new(None),
             present_mon_installed: RwLock::new(true),
         }
     }
@@ -40,6 +43,8 @@ impl FpsSidecarState {
     }
 
     pub fn set_data(&self, data: FpsData) {
+        self.clear_no_game_since();
+
         if let Ok(mut guard) = self.last_data_time.write() {
             *guard = Some(Instant::now());
         }
@@ -51,6 +56,37 @@ impl FpsSidecarState {
     pub fn clear_data(&self) {
         if let Ok(mut guard) = self.data.write() {
             *guard = None;
+        }
+    }
+
+    pub fn mark_no_game(&self) {
+        self.set_status(FpsSidecarStatus::NoGame);
+        self.clear_data();
+
+        if let Ok(mut guard) = self.no_game_since.write() {
+            if guard.is_none() {
+                *guard = Some(Instant::now());
+            }
+        }
+    }
+
+    pub fn clear_no_game_since(&self) {
+        if let Ok(mut guard) = self.no_game_since.write() {
+            *guard = None;
+        }
+    }
+
+    pub fn no_game_duration(&self) -> Option<Duration> {
+        self.no_game_since
+            .read()
+            .ok()
+            .and_then(|started_at| started_at.map(|instant| instant.elapsed()))
+    }
+
+    #[cfg(test)]
+    fn set_no_game_since(&self, instant: Instant) {
+        if let Ok(mut guard) = self.no_game_since.write() {
+            *guard = Some(instant);
         }
     }
 
@@ -148,14 +184,19 @@ impl SidecarHandler for FpsSidecarHandler {
     }
 
     fn mark_running(&self, state: &Self::State) {
+        state.clear_no_game_since();
         state.set_status(FpsSidecarStatus::Running);
     }
 
     fn mark_stopped(&self, state: &Self::State) {
+        state.clear_no_game_since();
+        state.clear_data();
         state.set_status(FpsSidecarStatus::Stopped);
     }
 
     fn mark_error(&self, state: &Self::State, error: String) {
+        state.clear_no_game_since();
+        state.clear_data();
         state.set_status(FpsSidecarStatus::Error(error));
     }
 
@@ -173,8 +214,7 @@ impl SidecarHandler for FpsSidecarHandler {
                 }
             }
             "no-game" => {
-                state.set_status(FpsSidecarStatus::NoGame);
-                state.clear_data();
+                state.mark_no_game();
             }
             "error" => {
                 let message = output.error.unwrap_or_else(|| "Unknown error".to_string());
@@ -191,7 +231,20 @@ impl SidecarHandler for FpsSidecarHandler {
     fn watcher_action(&self, state: &Self::State) -> SidecarWatcherAction {
         match state.get_status() {
             FpsSidecarStatus::Stopped => SidecarWatcherAction::Restart,
-            FpsSidecarStatus::Running | FpsSidecarStatus::NoGame => SidecarWatcherAction::Healthy,
+            FpsSidecarStatus::Running => SidecarWatcherAction::Healthy,
+            FpsSidecarStatus::NoGame => {
+                if state
+                    .no_game_duration()
+                    .is_some_and(|duration| duration >= NO_GAME_IDLE_TIMEOUT)
+                {
+                    tracing::info!(
+                        "[FPS Sidecar] No game detected for 120s, stopping FPS collector"
+                    );
+                    SidecarWatcherAction::StopProcess
+                } else {
+                    SidecarWatcherAction::Healthy
+                }
+            }
             FpsSidecarStatus::Error(_) | FpsSidecarStatus::PresentMonNotInstalled => {
                 SidecarWatcherAction::Stop
             }
@@ -218,11 +271,10 @@ impl SidecarHandler for FpsSidecarHandler {
 
 pub type FpsSidecarManager = SidecarRunner<FpsSidecarHandler>;
 
-/// Start FPS sidecar and return both shared state and the owned manager.
-pub fn start_fps_sidecar(app: &tauri::AppHandle) -> (Arc<FpsSidecarState>, FpsSidecarManager) {
+/// Create FPS sidecar state and manager without starting the process.
+pub fn create_fps_sidecar() -> (Arc<FpsSidecarState>, FpsSidecarManager) {
     let manager = FpsSidecarManager::new(FpsSidecarHandler, Arc::new(FpsSidecarState::new()));
     let state = manager.state();
-    manager.start(app);
     (state, manager)
 }
 
@@ -243,4 +295,75 @@ pub fn start_fps_emitter(app: tauri::AppHandle, fps_state: Arc<FpsSidecarState>)
             thread::sleep(Duration::from_secs(1));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_game_output_starts_idle_timer() {
+        let state = FpsSidecarState::new();
+        let handler = FpsSidecarHandler;
+
+        handler.handle_output(
+            &state,
+            FpsOutput {
+                output_type: "no-game".to_string(),
+                data: None,
+                error: None,
+                present_mon_installed: true,
+            },
+        );
+
+        assert_eq!(state.get_status(), FpsSidecarStatus::NoGame);
+        assert!(state.no_game_duration().is_some());
+        assert!(state.get_data().is_none());
+    }
+
+    #[test]
+    fn fps_data_clears_idle_timer() {
+        let state = FpsSidecarState::new();
+        state.mark_no_game();
+
+        state.set_data(FpsData {
+            process_name: "game.exe".to_string(),
+            process_id: 1234,
+            fps: 60.0,
+            frame_time: 16.6,
+            fps_1_percent_low: 55.0,
+            fps_01_percent_low: 48.0,
+            timestamp: 1,
+        });
+
+        assert!(state.no_game_duration().is_none());
+        assert!(state.get_data().is_some());
+    }
+
+    #[test]
+    fn no_game_watcher_stays_healthy_before_timeout() {
+        let state = FpsSidecarState::new();
+        let handler = FpsSidecarHandler;
+
+        state.mark_no_game();
+
+        assert_eq!(
+            handler.watcher_action(&state),
+            SidecarWatcherAction::Healthy
+        );
+    }
+
+    #[test]
+    fn no_game_watcher_stops_process_after_timeout() {
+        let state = FpsSidecarState::new();
+        let handler = FpsSidecarHandler;
+
+        state.mark_no_game();
+        state.set_no_game_since(Instant::now() - NO_GAME_IDLE_TIMEOUT - Duration::from_secs(1));
+
+        assert_eq!(
+            handler.watcher_action(&state),
+            SidecarWatcherAction::StopProcess
+        );
+    }
 }
