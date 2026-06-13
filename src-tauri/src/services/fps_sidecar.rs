@@ -194,6 +194,13 @@ impl SidecarHandler for FpsSidecarHandler {
         state.set_status(FpsSidecarStatus::Stopped);
     }
 
+    fn mark_process_ended(&self, state: &Self::State) {
+        match state.get_status() {
+            FpsSidecarStatus::Error(_) | FpsSidecarStatus::PresentMonNotInstalled => {}
+            _ => self.mark_stopped(state),
+        }
+    }
+
     fn mark_error(&self, state: &Self::State, error: String) {
         state.clear_no_game_since();
         state.clear_data();
@@ -218,6 +225,8 @@ impl SidecarHandler for FpsSidecarHandler {
             }
             "error" => {
                 let message = output.error.unwrap_or_else(|| "Unknown error".to_string());
+                state.clear_no_game_since();
+                state.clear_data();
                 if output.present_mon_installed {
                     state.set_status(FpsSidecarStatus::Error(message));
                 } else {
@@ -246,7 +255,7 @@ impl SidecarHandler for FpsSidecarHandler {
                 }
             }
             FpsSidecarStatus::Error(_) | FpsSidecarStatus::PresentMonNotInstalled => {
-                SidecarWatcherAction::Stop
+                SidecarWatcherAction::StopProcessKeepState
             }
             FpsSidecarStatus::NotStarted => SidecarWatcherAction::Wait,
         }
@@ -341,6 +350,40 @@ mod tests {
     }
 
     #[test]
+    fn error_output_clears_stale_fps_data() {
+        let state = FpsSidecarState::new();
+        let handler = FpsSidecarHandler;
+
+        state.set_data(FpsData {
+            process_name: "game.exe".to_string(),
+            process_id: 1234,
+            fps: 60.0,
+            frame_time: 16.6,
+            fps_1_percent_low: 55.0,
+            fps_01_percent_low: 48.0,
+            timestamp: 1,
+        });
+
+        handler.handle_output(
+            &state,
+            FpsOutput {
+                output_type: "error".to_string(),
+                data: None,
+                error: Some("Another PresentMon trace session is already running.".to_string()),
+                present_mon_installed: true,
+            },
+        );
+
+        assert!(state.get_data().is_none());
+        assert_eq!(
+            state.get_status(),
+            FpsSidecarStatus::Error(
+                "Another PresentMon trace session is already running.".to_string()
+            )
+        );
+    }
+
+    #[test]
     fn no_game_watcher_stays_healthy_before_timeout() {
         let state = FpsSidecarState::new();
         let handler = FpsSidecarHandler;
@@ -364,6 +407,53 @@ mod tests {
         assert_eq!(
             handler.watcher_action(&state),
             SidecarWatcherAction::StopProcess
+        );
+    }
+
+    #[test]
+    fn error_watcher_stops_process_without_clearing_error_state() {
+        let state = FpsSidecarState::new();
+        let handler = FpsSidecarHandler;
+
+        state.set_status(FpsSidecarStatus::Error(
+            "Another PresentMon trace session is already running.".to_string(),
+        ));
+
+        assert_eq!(
+            handler.watcher_action(&state),
+            SidecarWatcherAction::StopProcessKeepState
+        );
+    }
+
+    #[test]
+    fn present_mon_missing_watcher_stops_process_without_clearing_status() {
+        let state = FpsSidecarState::new();
+        let handler = FpsSidecarHandler;
+
+        state.set_status(FpsSidecarStatus::PresentMonNotInstalled);
+
+        assert_eq!(
+            handler.watcher_action(&state),
+            SidecarWatcherAction::StopProcessKeepState
+        );
+    }
+
+    #[test]
+    fn process_end_after_error_preserves_error_status() {
+        let state = FpsSidecarState::new();
+        let handler = FpsSidecarHandler;
+
+        state.set_status(FpsSidecarStatus::Error(
+            "Another PresentMon trace session is already running.".to_string(),
+        ));
+
+        handler.mark_process_ended(&state);
+
+        assert_eq!(
+            state.get_status(),
+            FpsSidecarStatus::Error(
+                "Another PresentMon trace session is already running.".to_string()
+            )
         );
     }
 }

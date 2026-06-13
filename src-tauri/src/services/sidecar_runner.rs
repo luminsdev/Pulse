@@ -26,6 +26,7 @@ pub enum SidecarWatcherAction {
     Restart,
     Stop,
     StopProcess,
+    StopProcessKeepState,
     Wait,
 }
 
@@ -41,6 +42,9 @@ pub trait SidecarHandler: Clone + Send + Sync + 'static {
     fn restart_limit(&self) -> u32;
     fn mark_running(&self, state: &Self::State);
     fn mark_stopped(&self, state: &Self::State);
+    fn mark_process_ended(&self, state: &Self::State) {
+        self.mark_stopped(state);
+    }
     fn mark_error(&self, state: &Self::State, error: String);
     fn handle_output(&self, state: &Self::State, output: Self::Output);
     fn watcher_action(&self, state: &Self::State) -> SidecarWatcherAction;
@@ -251,6 +255,11 @@ impl<H: SidecarHandler> SidecarRunner<H> {
                         handler.mark_stopped(&state);
                         break;
                     }
+                    SidecarWatcherAction::StopProcessKeepState => {
+                        stop_requested.store(true, Ordering::SeqCst);
+                        stop_child(&handler, &child);
+                        break;
+                    }
                     SidecarWatcherAction::Stop => break,
                     SidecarWatcherAction::Wait => {}
                 }
@@ -271,10 +280,32 @@ fn stop_child<H: SidecarHandler>(handler: &H, child_slot: &Arc<Mutex<Option<Chil
     if let Ok(mut guard) = child_slot.lock() {
         if let Some(mut child) = guard.take() {
             tracing::info!("[{}] Stopping process", handler.label());
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_child_tree(&mut child);
         }
     }
+}
+
+fn terminate_child_tree(child: &mut Child) {
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("taskkill");
+        command
+            .arg("/PID")
+            .arg(child.id().to_string())
+            .arg("/T")
+            .arg("/F")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command.creation_flags(CREATE_NO_WINDOW);
+
+        if command.status().is_ok_and(|status| status.success()) {
+            let _ = child.wait();
+            return;
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn spawn_child<H: SidecarHandler>(
@@ -309,8 +340,7 @@ fn spawn_child<H: SidecarHandler>(
             .lock()
             .map_err(|error| format!("Failed to lock child process: {}", error))?;
         if let Some(mut existing_child) = guard.take() {
-            let _ = existing_child.kill();
-            let _ = existing_child.wait();
+            terminate_child_tree(&mut existing_child);
         }
         *guard = Some(child);
     }
@@ -354,7 +384,7 @@ fn spawn_child<H: SidecarHandler>(
         }
 
         if !stop_requested.load(Ordering::SeqCst) {
-            handler.mark_stopped(&state);
+            handler.mark_process_ended(&state);
         }
     });
 
