@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using FpsSidecar.Models;
+using FpsSidecar.Providers;
 
 namespace FpsSidecar.Services;
 
@@ -16,6 +18,7 @@ public class PresentMonService
     private const string BundledPresentMonFileName = "presentmon-x86_64-pc-windows-msvc.exe";
     private const string TauriPresentMonFileName = "presentmon.exe";
     private readonly string _baseDirectory;
+    private readonly Func<string?> _findPresentMonExe;
 
     /// Captured critical error from PresentMon stderr (access denied, etc.)
     private volatile string? _lastCriticalError;
@@ -33,6 +36,15 @@ public class PresentMonService
     public PresentMonService(string baseDirectory)
     {
         _baseDirectory = baseDirectory;
+        _findPresentMonExe = FindPresentMonExe;
+    }
+
+    public PresentMonService(Func<string?> findPresentMonExe)
+    {
+        ArgumentNullException.ThrowIfNull(findPresentMonExe);
+
+        _baseDirectory = AppContext.BaseDirectory;
+        _findPresentMonExe = findPresentMonExe;
     }
 
     /// Processes to exclude from FPS tracking (system compositors, browsers, Tauri WebView)
@@ -110,121 +122,184 @@ public class PresentMonService
     /// </summary>
     public async Task StartAsync(CancellationToken ct)
     {
-        var exePath = FindPresentMonExe();
-        
-        if (exePath == null)
+        var provider = new PresentMonConsoleProvider(FindPresentMonExe);
+
+        await foreach (var providerEvent in provider.RunAsync(ct))
         {
-            var output = new FpsOutput
-            {
-                Type = "error",
-                Error = "PresentMon is unavailable. Pulse could not find its bundled PresentMon binary or an installed Intel PresentMon.",
-                PresentMonInstalled = false
-            };
+            var output = ToOutput(providerEvent);
             Console.WriteLine(JsonSerializer.Serialize(output, FpsJsonContext.Default.FpsOutput));
             Console.Out.Flush();
-            
-            // Keep running but output "not installed" periodically
-            while (!ct.IsCancellationRequested)
-            {
-                await Task.Delay(5000, ct);
-                Console.WriteLine(JsonSerializer.Serialize(output, FpsJsonContext.Default.FpsOutput));
-                Console.Out.Flush();
-            }
-            return;
-        }
-
-        Console.Error.WriteLine($"[fps-sidecar] Found PresentMon: {exePath}");
-
-        var restartDelayMs = RestartDelayMs;
-
-        while (!ct.IsCancellationRequested)
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = exePath,
-                Arguments = "--output_stdout --no_console_stats --stop_existing_session --session_name PulseFPS",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-            _lastCriticalError = null;
-
-            try
-            {
-                _process.Start();
-                _process.ErrorDataReceived += OnPresentMonError;
-                _process.BeginErrorReadLine();
-                Console.Error.WriteLine("[fps-sidecar] PresentMon started");
-            }
-            catch (Exception ex)
-            {
-                var output = new FpsOutput
-                {
-                    Type = "error",
-                    Error = $"Failed to start PresentMon: {ex.Message}",
-                    PresentMonInstalled = true
-                };
-                Console.WriteLine(JsonSerializer.Serialize(output, FpsJsonContext.Default.FpsOutput));
-                Console.Out.Flush();
-
-                await Task.Delay(restartDelayMs, ct);
-                restartDelayMs = Math.Min(restartDelayMs * 2, MaxRestartDelayMs);
-                continue;
-            }
-
-            // Parse CSV from stdout
-            var hadData = await ParseCsvOutputAsync(ct);
-
-            if (ct.IsCancellationRequested)
-            {
-                break;
-            }
-
-            if (hadData)
-            {
-                restartDelayMs = RestartDelayMs;
-            }
-
-            // Classify why PresentMon exited: critical error vs no game
-            if (_lastCriticalError != null)
-            {
-                var errorOutput = new FpsOutput
-                {
-                    Type = "error",
-                    Error = _lastCriticalError,
-                    PresentMonInstalled = true
-                };
-                Console.WriteLine(JsonSerializer.Serialize(errorOutput, FpsJsonContext.Default.FpsOutput));
-                Console.Out.Flush();
-                Console.Error.WriteLine($"[fps-sidecar] PresentMon critical error: {_lastCriticalError}");
-            }
-            else
-            {
-                var noGameOutput = new FpsOutput
-                {
-                    Type = "no-game",
-                    PresentMonInstalled = true
-                };
-                Console.WriteLine(JsonSerializer.Serialize(noGameOutput, FpsJsonContext.Default.FpsOutput));
-                Console.Out.Flush();
-                Console.Error.WriteLine("[fps-sidecar] PresentMon stopped. No game detected.");
-            }
-
-            await Task.Delay(restartDelayMs, ct);
-            restartDelayMs = Math.Min(restartDelayMs * 2, MaxRestartDelayMs);
         }
     }
 
-    private async Task<bool> ParseCsvOutputAsync(CancellationToken ct)
+    public async IAsyncEnumerable<FpsProviderEvent> RunConsoleProviderAsync(
+        [EnumeratorCancellation] CancellationToken ct)
     {
-        if (_process == null) return false;
+        var restartDelayMs = RestartDelayMs;
+
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var exePath = _findPresentMonExe();
+
+                if (exePath == null)
+                {
+                    yield return new FpsProviderEvent(
+                        FpsProviderEventType.Error,
+                        Error: "PresentMon is unavailable. Pulse could not find its bundled PresentMon binary or an installed Intel PresentMon.",
+                        PresentMonInstalled: false
+                    );
+
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        yield break;
+                    }
+
+                    continue;
+                }
+
+                Console.Error.WriteLine($"[fps-sidecar] Found PresentMon: {exePath}");
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    Arguments = "--output_stdout --no_console_stats --stop_existing_session --session_name PulseFPS",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+                _lastCriticalError = null;
+
+                Exception? startException = null;
+                try
+                {
+                    _process.Start();
+                    _process.ErrorDataReceived += OnPresentMonError;
+                    _process.BeginErrorReadLine();
+                    Console.Error.WriteLine("[fps-sidecar] PresentMon started");
+                }
+                catch (Exception ex)
+                {
+                    startException = ex;
+                }
+
+                if (startException != null)
+                {
+                    yield return new FpsProviderEvent(
+                        FpsProviderEventType.Error,
+                        Error: $"Failed to start PresentMon: {startException.Message}",
+                        PresentMonInstalled: true
+                    );
+
+                    try
+                    {
+                        await Task.Delay(restartDelayMs, ct);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        yield break;
+                    }
+
+                    restartDelayMs = Math.Min(restartDelayMs * 2, MaxRestartDelayMs);
+                    continue;
+                }
+
+                // Parse CSV from stdout
+                var hadData = false;
+                await foreach (var providerEvent in ParseCsvOutputAsync(ct))
+                {
+                    if (providerEvent.Type == FpsProviderEventType.FpsData)
+                    {
+                        hadData = true;
+                    }
+
+                    yield return providerEvent;
+                }
+
+                if (ct.IsCancellationRequested)
+                {
+                    yield break;
+                }
+
+                if (hadData)
+                {
+                    restartDelayMs = RestartDelayMs;
+                }
+
+                // Classify why PresentMon exited: critical error vs no game
+                if (_lastCriticalError != null)
+                {
+                    yield return new FpsProviderEvent(
+                        FpsProviderEventType.Error,
+                        Error: _lastCriticalError,
+                        PresentMonInstalled: true
+                    );
+                    Console.Error.WriteLine($"[fps-sidecar] PresentMon critical error: {_lastCriticalError}");
+                }
+                else
+                {
+                    yield return new FpsProviderEvent(FpsProviderEventType.NoGame);
+                    Console.Error.WriteLine("[fps-sidecar] PresentMon stopped. No game detected.");
+                }
+
+                try
+                {
+                    await Task.Delay(restartDelayMs, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    yield break;
+                }
+
+                restartDelayMs = Math.Min(restartDelayMs * 2, MaxRestartDelayMs);
+            }
+        }
+        finally
+        {
+            Stop();
+        }
+    }
+
+    public static FpsOutput ToOutput(FpsProviderEvent providerEvent)
+    {
+        return providerEvent.Type switch
+        {
+            FpsProviderEventType.FpsData => new FpsOutput
+            {
+                Type = "fps-data",
+                Data = providerEvent.Data,
+                PresentMonInstalled = providerEvent.PresentMonInstalled
+            },
+            FpsProviderEventType.NoGame => new FpsOutput
+            {
+                Type = "no-game",
+                PresentMonInstalled = providerEvent.PresentMonInstalled
+            },
+            FpsProviderEventType.Error => new FpsOutput
+            {
+                Type = "error",
+                Error = providerEvent.Error,
+                PresentMonInstalled = providerEvent.PresentMonInstalled
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(providerEvent))
+        };
+    }
+
+    private async IAsyncEnumerable<FpsProviderEvent> ParseCsvOutputAsync(
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        if (_process == null) yield break;
 
         var buffer = new List<CsvRow>();
         var lastEmit = DateTime.Now;
-        var hadData = false;
         
         using var reader = _process.StandardOutput;
         string? line;
@@ -232,59 +307,53 @@ public class PresentMonService
         string[] headers = [];
         Dictionary<string, int>? headerIndex = null;
 
-        try
+        while (!ct.IsCancellationRequested)
         {
-            while (!ct.IsCancellationRequested && (line = await reader.ReadLineAsync(ct)) != null)
+            try
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                line = await reader.ReadLineAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                yield break;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[fps-sidecar] Parse error: {ex.Message}");
+                yield break;
+            }
 
-                if (!headerParsed)
-                {
-                    headers = line.Split(',');
-                    headerIndex = BuildHeaderIndex(headers);
-                    headerParsed = true;
-                    Console.Error.WriteLine($"[fps-sidecar] CSV headers parsed: {headers.Length} columns");
-                    continue;
-                }
+            if (line == null) yield break;
+            if (string.IsNullOrWhiteSpace(line)) continue;
 
-                if (headerIndex == null) continue;
+            if (!headerParsed)
+            {
+                headers = line.Split(',');
+                headerIndex = BuildHeaderIndex(headers);
+                headerParsed = true;
+                Console.Error.WriteLine($"[fps-sidecar] CSV headers parsed: {headers.Length} columns");
+                continue;
+            }
 
-                // Parse CSV row
-                var row = ParseCsvRow(headerIndex, line);
-                if (row != null)
-                {
-                    buffer.Add(row);
-                }
+            if (headerIndex == null) continue;
 
-                // Emit aggregated data every ~1 second
-                if ((DateTime.Now - lastEmit).TotalSeconds >= 1 && buffer.Count > 0)
-                {
-                    var aggregated = AggregateBuffer(buffer);
-                    var output = new FpsOutput
-                    {
-                        Type = "fps-data",
-                        Data = aggregated
-                    };
-                    Console.WriteLine(JsonSerializer.Serialize(output, FpsJsonContext.Default.FpsOutput));
-                    Console.Out.Flush();
-                    hadData = true;
-                    
-                    buffer.Clear();
-                    lastEmit = DateTime.Now;
-                }
+            // Parse CSV row
+            var row = ParseCsvRow(headerIndex, line);
+            if (row != null)
+            {
+                buffer.Add(row);
+            }
+
+            // Emit aggregated data every ~1 second
+            if ((DateTime.Now - lastEmit).TotalSeconds >= 1 && buffer.Count > 0)
+            {
+                var aggregated = AggregateBuffer(buffer);
+                yield return new FpsProviderEvent(FpsProviderEventType.FpsData, Data: aggregated);
+
+                buffer.Clear();
+                lastEmit = DateTime.Now;
             }
         }
-        catch (OperationCanceledException)
-        {
-            // Normal cancellation
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[fps-sidecar] Parse error: {ex.Message}");
-        }
-
-        // Exit parsing loop; StartAsync handles no-game + restart
-        return hadData;
     }
 
     private void OnPresentMonError(object sender, DataReceivedEventArgs e)
