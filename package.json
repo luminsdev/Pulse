@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:sidecars": "powershell -ExecutionPolicy Bypass -File scripts/build-fps-sidecar.ps1",
+    "build:tauri": "powershell -ExecutionPolicy Bypass -File scripts/build-tauri.ps1",
     "preview": "vite preview",
     "tauri": "tauri"
   },

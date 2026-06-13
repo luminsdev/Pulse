@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm run build",
+    "beforeBuildCommand": "pnpm run build:tauri",
     "frontendDist": "../dist"
   },
   "app": {
@@ -51,7 +51,11 @@
     "targets": "all",
     "externalBin": [
       "binaries/lhm-sidecar",
-      "binaries/fps-sidecar"
+      "binaries/fps-sidecar",
+      "binaries/presentmon"
+    ],
+    "resources": [
+      "binaries/LICENSE-PresentMon.txt"
     ],
     "icon": [
       "icons/32x32.png",

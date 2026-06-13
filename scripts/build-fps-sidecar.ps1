@@ -5,13 +5,17 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Split-Path -Parent $ScriptDir
 
 $ProjectPath = Join-Path $RootDir "src-tauri\sidecar\fps-sidecar\fps-sidecar.csproj"
-$PublishDir = Join-Path $RootDir "src-tauri\sidecar\fps-sidecar\bin\Release\net9.0\win-x64\publish"
+$PublishDir = Join-Path $RootDir "src-tauri\sidecar\fps-sidecar\bin\Release\net10.0\win-x64\publish"
 $SourceExe = Join-Path $PublishDir "fps-sidecar.exe"
 $TargetDir = Join-Path $RootDir "src-tauri\binaries"
 $TargetExe = Join-Path $TargetDir "fps-sidecar-x86_64-pc-windows-msvc.exe"
+$VendorPresentMonExe = Join-Path $RootDir "src-tauri\vendor\presentmon\PresentMon-2.4.1-x64.exe"
+$VendorPresentMonLicense = Join-Path $RootDir "src-tauri\vendor\presentmon\LICENSE-PresentMon.txt"
+$TargetPresentMonExe = Join-Path $TargetDir "presentmon-x86_64-pc-windows-msvc.exe"
+$TargetPresentMonLicense = Join-Path $TargetDir "LICENSE-PresentMon.txt"
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    throw ".NET SDK is required to build fps-sidecar. Install .NET 9 SDK and rerun this script."
+    throw ".NET SDK is required to build fps-sidecar. Install .NET 10 SDK and rerun this script."
 }
 
 if (-not (Test-Path -LiteralPath $ProjectPath)) {
@@ -33,3 +37,17 @@ if (-not (Test-Path -LiteralPath $TargetDir)) {
 
 Copy-Item -LiteralPath $SourceExe -Destination $TargetExe -Force
 "[OK] Copied FPS sidecar to $TargetExe"
+
+if (Test-Path -LiteralPath $VendorPresentMonExe) {
+    Copy-Item -LiteralPath $VendorPresentMonExe -Destination $TargetPresentMonExe -Force
+    "[OK] Copied bundled PresentMon to $TargetPresentMonExe"
+
+    if (Test-Path -LiteralPath $VendorPresentMonLicense) {
+        Copy-Item -LiteralPath $VendorPresentMonLicense -Destination $TargetPresentMonLicense -Force
+        "[OK] Copied PresentMon license to $TargetPresentMonLicense"
+    } else {
+        throw "Bundled PresentMon binary exists but license is missing: $VendorPresentMonLicense"
+    }
+} else {
+    "[INFO] No bundled PresentMon binary found. FPS sidecar will fall back to installed Intel PresentMon."
+}

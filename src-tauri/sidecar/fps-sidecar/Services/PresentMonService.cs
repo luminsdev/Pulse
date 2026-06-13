@@ -12,6 +12,13 @@ public class PresentMonService
     private Process? _process;
     private const int RestartDelayMs = 2000;
     private const int MaxRestartDelayMs = 15000;
+    private const string PresentMonOverrideEnv = "PULSE_PRESENTMON_PATH";
+    private const string BundledPresentMonFileName = "presentmon-x86_64-pc-windows-msvc.exe";
+    private const string TauriPresentMonFileName = "presentmon.exe";
+    private readonly string _baseDirectory;
+
+    /// Captured critical error from PresentMon stderr (access denied, etc.)
+    private volatile string? _lastCriticalError;
     
     private readonly string[] _defaultInstallPaths =
     [
@@ -19,19 +26,82 @@ public class PresentMonService
         @"C:\Program Files (x86)\Intel\PresentMon\PresentMonConsoleApplication"
     ];
 
-    /// <summary>
-    /// Find PresentMon executable (handles versioned filenames like PresentMon-2.4.1-x64.exe)
-    /// </summary>
-    public string? FindPresentMonExe()
+    public PresentMonService() : this(AppContext.BaseDirectory)
     {
+    }
+
+    public PresentMonService(string baseDirectory)
+    {
+        _baseDirectory = baseDirectory;
+    }
+
+    /// Processes to exclude from FPS tracking (system compositors, browsers, Tauri WebView)
+    private static readonly HashSet<string> ExcludedProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Tauri / Electron WebView
+        "msedgewebview2.exe",
+        // Windows system compositors
+        "dwm.exe",
+        "csrss.exe",
+        "explorer.exe",
+        // Browsers
+        "chrome.exe",
+        "msedge.exe",
+        "firefox.exe",
+        "brave.exe",
+        "opera.exe",
+        // System
+        "SearchHost.exe",
+        "ShellExperienceHost.exe",
+        "StartMenuExperienceHost.exe",
+        "TextInputHost.exe",
+        "SystemSettings.exe",
+        "WindowsTerminal.exe",
+        "wt.exe",
+        // Self
+        "Pulse.exe",
+    };
+
+    /// <summary>
+    /// Find PresentMon executable candidates in deterministic preference order.
+    /// </summary>
+    public IEnumerable<string> GetPresentMonCandidates()
+    {
+        var overridePath = Environment.GetEnvironmentVariable(PresentMonOverrideEnv);
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            yield return overridePath;
+        }
+
+        var baseDirectory = _baseDirectory;
+        yield return Path.Combine(baseDirectory, BundledPresentMonFileName);
+        yield return Path.Combine(baseDirectory, TauriPresentMonFileName);
+        yield return Path.Combine(baseDirectory, "PresentMon.exe");
+
         foreach (var dir in _defaultInstallPaths)
         {
             if (!Directory.Exists(dir)) continue;
-            
-            // Look for versioned exe: PresentMon-*.exe
-            var exe = Directory.GetFiles(dir, "PresentMon-*.exe").FirstOrDefault();
-            if (exe != null) return exe;
+
+            foreach (var exe in Directory.GetFiles(dir, "PresentMon-*.exe"))
+            {
+                yield return exe;
+            }
         }
+    }
+
+    /// <summary>
+    /// Find PresentMon executable (handles bundled, sibling, and versioned installed filenames).
+    /// </summary>
+    public string? FindPresentMonExe()
+    {
+        foreach (var candidate in GetPresentMonCandidates())
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
         return null;
     }
 
@@ -47,7 +117,7 @@ public class PresentMonService
             var output = new FpsOutput
             {
                 Type = "error",
-                Error = "PresentMon not installed. Download from: https://game.intel.com/story/intel-presentmon/",
+                Error = "PresentMon is unavailable. Pulse could not find its bundled PresentMon binary or an installed Intel PresentMon.",
                 PresentMonInstalled = false
             };
             Console.WriteLine(JsonSerializer.Serialize(output, FpsJsonContext.Default.FpsOutput));
@@ -72,7 +142,7 @@ public class PresentMonService
             var startInfo = new ProcessStartInfo
             {
                 FileName = exePath,
-                Arguments = "--output_stdout --no_console_stats",
+                Arguments = "--output_stdout --no_console_stats --stop_existing_session --session_name PulseFPS",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -80,6 +150,7 @@ public class PresentMonService
             };
 
             _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+            _lastCriticalError = null;
 
             try
             {
@@ -117,15 +188,31 @@ public class PresentMonService
                 restartDelayMs = RestartDelayMs;
             }
 
-            var noGameOutput = new FpsOutput
+            // Classify why PresentMon exited: critical error vs no game
+            if (_lastCriticalError != null)
             {
-                Type = "no-game",
-                PresentMonInstalled = true
-            };
-            Console.WriteLine(JsonSerializer.Serialize(noGameOutput, FpsJsonContext.Default.FpsOutput));
-            Console.Out.Flush();
+                var errorOutput = new FpsOutput
+                {
+                    Type = "error",
+                    Error = _lastCriticalError,
+                    PresentMonInstalled = true
+                };
+                Console.WriteLine(JsonSerializer.Serialize(errorOutput, FpsJsonContext.Default.FpsOutput));
+                Console.Out.Flush();
+                Console.Error.WriteLine($"[fps-sidecar] PresentMon critical error: {_lastCriticalError}");
+            }
+            else
+            {
+                var noGameOutput = new FpsOutput
+                {
+                    Type = "no-game",
+                    PresentMonInstalled = true
+                };
+                Console.WriteLine(JsonSerializer.Serialize(noGameOutput, FpsJsonContext.Default.FpsOutput));
+                Console.Out.Flush();
+                Console.Error.WriteLine("[fps-sidecar] PresentMon stopped. No game detected.");
+            }
 
-            Console.Error.WriteLine("[fps-sidecar] PresentMon stopped. Waiting for activity...");
             await Task.Delay(restartDelayMs, ct);
             restartDelayMs = Math.Min(restartDelayMs * 2, MaxRestartDelayMs);
         }
@@ -200,10 +287,22 @@ public class PresentMonService
         return hadData;
     }
 
-    private static void OnPresentMonError(object sender, DataReceivedEventArgs e)
+    private void OnPresentMonError(object sender, DataReceivedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(e.Data)) return;
         Console.Error.WriteLine($"[fps-sidecar] PresentMon: {e.Data}");
+
+        // Detect critical errors that prevent PresentMon from functioning
+        var line = e.Data;
+        if (line.Contains("access denied", StringComparison.OrdinalIgnoreCase))
+        {
+            _lastCriticalError = "PresentMon requires administrator privileges or the user must be in the 'Performance Log Users' group.";
+        }
+        else if (line.Contains("trace session", StringComparison.OrdinalIgnoreCase)
+                 && line.Contains("already running", StringComparison.OrdinalIgnoreCase))
+        {
+            _lastCriticalError = "Another PresentMon trace session is already running.";
+        }
     }
 
     /// <summary>
@@ -245,6 +344,9 @@ public class PresentMonService
 
             var app = values[appIdx].Trim();
             if (string.IsNullOrEmpty(app)) return null;
+
+            // Skip non-game processes (system compositors, browsers, Tauri WebView)
+            if (ExcludedProcesses.Contains(app)) return null;
 
             if (!int.TryParse(values[pidIdx], out int pid)) return null;
             if (!double.TryParse(values[msIdx], out double ms)) return null;

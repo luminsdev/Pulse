@@ -9,4 +9,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>fps-sidecar</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\vendor\presentmon\PresentMon-2.4.1-x64.exe" Condition="Exists('..\..\vendor\presentmon\PresentMon-2.4.1-x64.exe')" Link="presentmon-x86_64-pc-windows-msvc.exe" TargetPath="presentmon-x86_64-pc-windows-msvc.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\vendor\presentmon\LICENSE-PresentMon.txt" Condition="Exists('..\..\vendor\presentmon\LICENSE-PresentMon.txt')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
