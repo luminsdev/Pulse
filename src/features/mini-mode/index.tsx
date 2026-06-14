@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { CompactWidget } from "./components";
 import { useSystemStats } from "@/features/dashboard/hooks/useSystemStats";
 import { useFpsStats } from "@/features/dashboard/hooks/useFpsStats";
+import { useSidecarStatus } from "@/features/dashboard/hooks/useSidecarStatus";
 import { toggleMiniMode } from "@/lib/tauri";
 
 /**
@@ -11,6 +12,7 @@ import { toggleMiniMode } from "@/lib/tauri";
 export function MiniMode() {
   const { stats } = useSystemStats();
   const { data: fpsData, status: fpsStatus } = useFpsStats();
+  useSidecarStatus("mini");
 
   const handleExpand = useCallback(() => {
     toggleMiniMode().catch(console.error);

@@ -134,6 +134,16 @@ impl SidecarState {
         }
     }
 
+    pub fn clear_data(&self) {
+        if let Ok(mut guard) = self.last_data_time.write() {
+            *guard = None;
+        }
+
+        if let Ok(mut guard) = self.data.write() {
+            *guard = None;
+        }
+    }
+
     pub fn get_status(&self) -> SidecarStatus {
         self.status
             .read()
@@ -286,10 +296,17 @@ impl SidecarHandler for LhmSidecarHandler {
 
 pub type SidecarManager = SidecarRunner<LhmSidecarHandler>;
 
-/// Start sidecar and return both shared state and the owned manager.
-pub fn start_sidecar(app: &tauri::AppHandle) -> (Arc<SidecarState>, SidecarManager) {
+/// Create sidecar state and manager without starting the process.
+pub fn create_sidecar() -> (Arc<SidecarState>, SidecarManager) {
     let manager = SidecarManager::new(LhmSidecarHandler, Arc::new(SidecarState::new()));
     let state = manager.state();
+    (state, manager)
+}
+
+/// Start sidecar and return both shared state and the owned manager.
+#[allow(dead_code)]
+pub fn start_sidecar(app: &tauri::AppHandle) -> (Arc<SidecarState>, SidecarManager) {
+    let (state, manager) = create_sidecar();
     manager.start(app);
     (state, manager)
 }
@@ -303,6 +320,37 @@ mod tests {
         let state = SidecarState::new();
         assert!(state.get_data().is_none());
         assert_eq!(state.get_status(), SidecarStatus::NotStarted);
+    }
+
+    #[test]
+    fn clear_data_removes_previous_sensor_snapshot() {
+        let state = SidecarState::new();
+        state.set_data(SidecarData {
+            cpu: Some(SidecarCpuData {
+                name: Some("Test CPU".to_string()),
+                temperature: Some(65.0),
+                package_temperature: None,
+                core_temperatures: vec![],
+                max_temperature: None,
+                power: None,
+                core_powers: vec![],
+            }),
+            gpu: vec![],
+            timestamp: 123,
+            error: None,
+        });
+
+        state.clear_data();
+
+        assert!(state.get_data().is_none());
+    }
+
+    #[test]
+    fn create_sidecar_initializes_without_starting_process() {
+        let (state, manager) = create_sidecar();
+
+        assert_eq!(state.get_status(), SidecarStatus::NotStarted);
+        assert!(manager.state().get_data().is_none());
     }
 
     #[test]

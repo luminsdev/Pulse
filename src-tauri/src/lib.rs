@@ -13,11 +13,14 @@ mod services;
 mod utils;
 
 use commands::{
-    get_fps_monitoring_status, get_log_path, get_system_stats, has_gpu_support, hide_mini_window,
-    show_main_window, start_fps_monitoring, stop_fps_monitoring, toggle_mini_mode, MonitorState,
+    acquire_sensor_monitoring, acquire_sensor_monitoring_surface, get_fps_monitoring_status,
+    get_log_path, get_sensor_monitoring_status, get_system_stats, has_gpu_support,
+    hide_mini_window, release_sensor_monitoring, release_sensor_monitoring_surface,
+    show_main_window, start_fps_monitoring, start_sensor_monitoring, stop_fps_monitoring,
+    toggle_mini_mode, MonitorState, SensorMonitorLeaseState,
 };
 use services::{
-    create_fps_sidecar, start_fps_emitter, start_sidecar, FpsSidecarManager, FpsSidecarState,
+    create_fps_sidecar, create_sidecar, start_fps_emitter, FpsSidecarManager, FpsSidecarState,
     SidecarManager, SidecarState, SidecarStatusInfo, SystemMonitor,
 };
 
@@ -31,11 +34,11 @@ pub struct AppState {
 
 /// Payload for sidecar status event
 #[derive(serde::Serialize, Clone)]
-struct SidecarStatusPayload {
+pub(crate) struct SidecarStatusPayload {
     #[serde(flatten)]
-    status: SidecarStatusInfo,
-    restart_count: u32,
-    can_restart: bool,
+    pub(crate) status: SidecarStatusInfo,
+    pub(crate) restart_count: u32,
+    pub(crate) can_restart: bool,
 }
 
 /// Start a background thread that emits system stats every second
@@ -176,6 +179,30 @@ fn request_graceful_shutdown(app: &tauri::AppHandle) {
     app.exit(0);
 }
 
+fn with_sensor_lifecycle_state<F>(app: &tauri::AppHandle, action: &str, update: F)
+where
+    F: FnOnce(&SensorMonitorLeaseState, &Mutex<SidecarManager>) -> Result<(), String>,
+{
+    let Some(leases) = app.try_state::<SensorMonitorLeaseState>() else {
+        tracing::warn!(
+            "[App] Cannot {} sensor monitoring before leases are ready",
+            action
+        );
+        return;
+    };
+    let Some(manager) = app.try_state::<Mutex<SidecarManager>>() else {
+        tracing::warn!(
+            "[App] Cannot {} sensor monitoring before sidecar is ready",
+            action
+        );
+        return;
+    };
+
+    if let Err(error) = update(&leases, &manager) {
+        tracing::error!("[App] Failed to {} sensor monitoring: {}", action, error);
+    }
+}
+
 /// Setup system tray with menu
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Create menu items
@@ -198,6 +225,9 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(|app, event| {
             match event.id.as_ref() {
                 "show" => {
+                    with_sensor_lifecycle_state(app, "acquire dashboard", |leases, manager| {
+                        acquire_sensor_monitoring_surface("dashboard", app, leases, manager)
+                    });
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
@@ -205,9 +235,15 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 "mini" => {
                     // Toggle to mini mode
+                    with_sensor_lifecycle_state(app, "acquire mini", |leases, manager| {
+                        acquire_sensor_monitoring_surface("mini", app, leases, manager)
+                    });
                     if let Some(main) = app.get_webview_window("main") {
                         let _ = main.hide();
                     }
+                    with_sensor_lifecycle_state(app, "release dashboard", |leases, manager| {
+                        release_sensor_monitoring_surface("dashboard", leases, manager)
+                    });
                     if let Some(mini) = app.get_webview_window("mini") {
                         let _ = mini.show();
                         let _ = mini.set_focus();
@@ -228,6 +264,9 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             } = event
             {
                 let app = tray.app_handle();
+                with_sensor_lifecycle_state(app, "acquire dashboard", |leases, manager| {
+                    acquire_sensor_monitoring_surface("dashboard", app, leases, manager)
+                });
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
@@ -247,6 +286,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(MonitorState(Mutex::new(SystemMonitor::new())))
+        .manage(SensorMonitorLeaseState::default())
         .invoke_handler(tauri::generate_handler![
             get_system_stats,
             get_log_path,
@@ -254,6 +294,10 @@ pub fn run() {
             start_fps_monitoring,
             stop_fps_monitoring,
             get_fps_monitoring_status,
+            start_sensor_monitoring,
+            acquire_sensor_monitoring,
+            release_sensor_monitoring,
+            get_sensor_monitoring_status,
             toggle_mini_mode,
             show_main_window,
             hide_mini_window,
@@ -266,9 +310,8 @@ pub fn run() {
                 tracing::error!("[Tray] Failed to setup tray: {}", e);
             }
 
-            // Start the sidecar for temperature monitoring
-            // The sidecar runs as elevated process and provides sensor data
-            let (sidecar_state, sidecar_manager) = start_sidecar(app.handle());
+            // Create the temperature sidecar lazily; UI surfaces start it on demand.
+            let (sidecar_state, sidecar_manager) = create_sidecar();
 
             // Create the FPS sidecar manager lazily; the process starts on demand.
             let (fps_sidecar_state, fps_sidecar_manager) = create_fps_sidecar();
@@ -291,11 +334,22 @@ pub fn run() {
             let main_window = app.get_webview_window("main");
             if let Some(window) = main_window {
                 let window_clone = window.clone();
+                let app_handle = app.handle().clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         // Prevent the window from closing, hide it instead
                         api.prevent_close();
                         let _ = window_clone.hide();
+                        let leases = app_handle.state::<SensorMonitorLeaseState>();
+                        let manager = app_handle.state::<Mutex<SidecarManager>>();
+                        if let Err(error) =
+                            release_sensor_monitoring_surface("dashboard", &leases, &manager)
+                        {
+                            tracing::error!(
+                                "[App] Failed to release dashboard sensor monitoring: {}",
+                                error
+                            );
+                        }
                         tracing::info!("[App] Main window hidden to tray");
                     }
                 });

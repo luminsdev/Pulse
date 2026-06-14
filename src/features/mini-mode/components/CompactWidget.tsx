@@ -1,7 +1,6 @@
 import { motion } from "framer-motion";
 import { Cpu, MemoryStick, Gpu, Maximize2, X, Gamepad2 } from "lucide-react";
 import type { SystemStatsPayload, FpsData, FpsSidecarStatusType } from "@/types/stats";
-import { hideMiniWindow, showMainWindow } from "@/lib/tauri";
 
 interface CompactWidgetProps {
   stats: SystemStatsPayload | null;
@@ -121,8 +120,7 @@ export function CompactWidget({ stats, onExpand, fpsData, fpsStatus = "not_start
 
   const handleClose = async () => {
     try {
-      await hideMiniWindow();
-      await showMainWindow();
+      onExpand();
     } catch (error) {
       console.error("Failed to close mini window:", error);
     }

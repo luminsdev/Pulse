@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { FpsEventPayload, SystemStats } from "@/types/stats";
+import type { FpsEventPayload, SidecarStatusPayload, SystemStats } from "@/types/stats";
 
 /**
  * Type-safe wrapper for Tauri invoke commands
@@ -34,4 +34,20 @@ export async function stopFpsMonitoring(): Promise<void> {
 
 export async function getFpsMonitoringStatus(): Promise<FpsEventPayload> {
   return invoke<FpsEventPayload>("get_fps_monitoring_status");
+}
+
+export async function startSensorMonitoring(): Promise<void> {
+  return invoke("start_sensor_monitoring");
+}
+
+export async function acquireSensorMonitoring(surface: string): Promise<void> {
+  return invoke("acquire_sensor_monitoring", { surface });
+}
+
+export async function releaseSensorMonitoring(surface: string): Promise<void> {
+  return invoke("release_sensor_monitoring", { surface });
+}
+
+export async function getSensorMonitoringStatus(): Promise<SidecarStatusPayload> {
+  return invoke<SidecarStatusPayload>("get_sensor_monitoring_status");
 }

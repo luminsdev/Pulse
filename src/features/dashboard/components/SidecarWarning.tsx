@@ -11,18 +11,30 @@ interface SidecarWarningProps {
   show: boolean;
   /** Callback to dismiss */
   onDismiss?: () => void;
+  /** Callback to manually retry monitoring */
+  onRetry?: () => Promise<void> | void;
+  /** Whether retry is in progress */
+  isRetrying?: boolean;
 }
 
 /**
  * Warning banner for sidecar issues
  * Shows appropriate icon and message based on status type
  */
-export function SidecarWarning({ status, message, show, onDismiss }: SidecarWarningProps) {
+export function SidecarWarning({
+  status,
+  message,
+  show,
+  onDismiss,
+  onRetry,
+  isRetrying = false,
+}: SidecarWarningProps) {
   if (!status || !show) return null;
 
   // Determine variant based on status
   const isAdminIssue = status.status === "requires_admin";
   const isRestarting = status.status === "stopped" && status.can_restart;
+  const showRetry = onRetry && !isAdminIssue;
 
   return (
     <AnimatePresence>
@@ -56,16 +68,30 @@ export function SidecarWarning({ status, message, show, onDismiss }: SidecarWarn
               <span>{message}</span>
             </div>
 
-            {/* Dismiss button (only for non-critical) */}
-            {onDismiss && !isAdminIssue && (
-              <button
-                onClick={onDismiss}
-                className="rounded p-1 hover:bg-white/10 transition-colors"
-                aria-label="Dismiss"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
+            <div className="flex items-center gap-1">
+              {showRetry && (
+                <button
+                  onClick={() => void onRetry()}
+                  disabled={isRetrying}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+                  aria-label="Retry temperature monitoring"
+                >
+                  <RefreshCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
+                  <span className="hidden sm:inline">Retry</span>
+                </button>
+              )}
+
+              {/* Dismiss button (only for non-critical) */}
+              {onDismiss && !isAdminIssue && (
+                <button
+                  onClick={onDismiss}
+                  className="rounded p-1 hover:bg-white/10 transition-colors"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Help text for admin issue */}

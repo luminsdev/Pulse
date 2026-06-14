@@ -25,7 +25,13 @@ export function Dashboard() {
   const { stats, history, isConnected } = useSystemStats();
   const { info: systemInfo } = useSystemInfo();
   const { processes } = useProcessList();
-  const { status: sidecarStatus, message: sidecarMessage, showWarning } = useSidecarStatus();
+  const {
+    status: sidecarStatus,
+    message: sidecarMessage,
+    showWarning,
+    isStarting: isSensorStarting,
+    retryMonitoring: retrySensorMonitoring,
+  } = useSidecarStatus();
   const {
     data: fpsData,
     status: fpsStatus,
@@ -73,6 +79,8 @@ export function Dashboard() {
         message={sidecarMessage}
         show={showWarning && !warningDismissed}
         onDismiss={handleDismissWarning}
+        onRetry={retrySensorMonitoring}
+        isRetrying={isSensorStarting}
       />
 
       {/* Top Row: Hardware Cards - Responsive grid */}
