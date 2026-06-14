@@ -208,3 +208,27 @@ export function getFpsStatusMessage(payload: FpsEventPayload): string {
       return "Unknown status";
   }
 }
+
+// Telemetry diagnostics types - mirrors Rust diagnostics models
+
+export type DiagnosticProcessRole =
+  | "pulse"
+  | "web_view"
+  | "lhm_sidecar"
+  | "fps_sidecar"
+  | "present_mon"
+  | "other";
+
+export interface DiagnosticProcess {
+  pid: number;
+  name: string;
+  role: DiagnosticProcessRole;
+  memory_bytes: number;
+  cpu_usage: number;
+}
+
+export interface TelemetryDiagnosticsPayload {
+  processes: DiagnosticProcess[];
+  total_memory_bytes: number;
+  timestamp: number;
+}

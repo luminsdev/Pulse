@@ -7,6 +7,7 @@ import { useSystemInfo } from "./hooks/useSystemInfo";
 import { useProcessList } from "./hooks/useProcessList";
 import { useSidecarStatus } from "./hooks/useSidecarStatus";
 import { useFpsStats } from "./hooks/useFpsStats";
+import { useTelemetryDiagnostics } from "./hooks/useTelemetryDiagnostics";
 import {
   CpuCard,
   RamCard,
@@ -15,6 +16,7 @@ import {
   TopProcessesCard,
   PerformanceChart,
   SidecarWarning,
+  TelemetryDiagnosticsCard,
 } from "./components";
 
 /**
@@ -42,6 +44,7 @@ export function Dashboard() {
     startMonitoring: startFpsMonitoring,
     stopMonitoring: stopFpsMonitoring,
   } = useFpsStats();
+  const telemetryDiagnostics = useTelemetryDiagnostics();
   const [warningDismissed, setWarningDismissed] = useState(false);
 
   const handleDismissWarning = useCallback(() => {
@@ -119,6 +122,10 @@ export function Dashboard() {
         <SystemInfoCard info={systemInfo} />
         <TopProcessesCard processes={processes} />
       </div>
+
+      <CardErrorBoundary>
+        <TelemetryDiagnosticsCard diagnostics={telemetryDiagnostics} />
+      </CardErrorBoundary>
 
       {/* Footer */}
       {stats && (

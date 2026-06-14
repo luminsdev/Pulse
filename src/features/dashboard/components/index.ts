@@ -5,3 +5,4 @@ export { SystemInfoCard } from "./SystemInfoCard";
 export { TopProcessesCard } from "./TopProcessesCard";
 export { PerformanceChart } from "./PerformanceChart";
 export { SidecarWarning } from "./SidecarWarning";
+export { TelemetryDiagnosticsCard } from "./TelemetryDiagnosticsCard";

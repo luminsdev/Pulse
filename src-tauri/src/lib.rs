@@ -14,14 +14,15 @@ mod utils;
 
 use commands::{
     acquire_sensor_monitoring, acquire_sensor_monitoring_surface, get_fps_monitoring_status,
-    get_log_path, get_sensor_monitoring_status, get_system_stats, has_gpu_support,
-    hide_mini_window, release_sensor_monitoring, release_sensor_monitoring_surface,
-    show_main_window, start_fps_monitoring, start_sensor_monitoring, stop_fps_monitoring,
-    toggle_mini_mode, MonitorState, SensorMonitorLeaseState,
+    get_log_path, get_sensor_monitoring_status, get_system_stats, get_telemetry_diagnostics,
+    has_gpu_support, hide_mini_window, release_sensor_monitoring,
+    release_sensor_monitoring_surface, show_main_window, start_fps_monitoring,
+    start_sensor_monitoring, stop_fps_monitoring, toggle_mini_mode, MonitorState,
+    SensorMonitorLeaseState, TelemetryDiagnosticsState,
 };
 use services::{
     create_fps_sidecar, create_sidecar, start_fps_emitter, FpsSidecarManager, FpsSidecarState,
-    SidecarManager, SidecarState, SidecarStatusInfo, SystemMonitor,
+    SidecarManager, SidecarState, SidecarStatusInfo, SystemMonitor, TelemetryDiagnosticsService,
 };
 
 use models::GpuStats;
@@ -286,10 +287,14 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(MonitorState(Mutex::new(SystemMonitor::new())))
+        .manage(TelemetryDiagnosticsState(Mutex::new(
+            TelemetryDiagnosticsService::new(),
+        )))
         .manage(SensorMonitorLeaseState::default())
         .invoke_handler(tauri::generate_handler![
             get_system_stats,
             get_log_path,
+            get_telemetry_diagnostics,
             has_gpu_support,
             start_fps_monitoring,
             stop_fps_monitoring,

@@ -1,8 +1,10 @@
+pub mod diagnostics;
 pub mod fps_sidecar;
 pub mod monitor;
 pub mod sidecar;
 pub mod sidecar_runner;
 
+pub use diagnostics::*;
 pub use fps_sidecar::{create_fps_sidecar, start_fps_emitter, FpsSidecarManager, FpsSidecarState};
 pub use monitor::*;
 #[allow(unused_imports)]

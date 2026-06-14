@@ -28,7 +28,7 @@ export function TopProcessesCard({ processes }: TopProcessesCardProps) {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <ListOrdered className="h-4 w-4 text-primary" />
-            Top Processes
+            System Top Processes
           </CardTitle>
         </CardHeader>
 
