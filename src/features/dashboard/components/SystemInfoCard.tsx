@@ -1,12 +1,7 @@
-import { Monitor, Cpu, MemoryStick, MonitorPlay, Clock } from "lucide-react";
+import { Monitor } from "lucide-react";
 import { motion } from "framer-motion";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { formatBytes, formatUptime } from "@/lib/utils";
+import { formatBytes, formatUptime, formatHardwareName } from "@/lib/utils";
+import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import type { SystemInfo } from "@/types/stats";
 
 interface SystemInfoCardProps {
@@ -15,113 +10,78 @@ interface SystemInfoCardProps {
 }
 
 /**
- * System information card showing static hardware details
+ * System information cell for Precision Telemetry Console
  */
 export function SystemInfoCard({ info }: SystemInfoCardProps) {
   // Loading state
   if (!info) {
-    return (
-      <Card className="relative overflow-hidden">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Monitor className="h-4 w-4" />
-            System Info
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex h-24 items-center justify-center text-muted-foreground">
-            Loading system info...
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <SkeletonLoader label="LOADING SYSTEM SPECIFICATION..." lines={8} />;
   }
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: 0.1 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-3"
     >
-      <Card className="relative overflow-hidden h-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Monitor className="h-4 w-4 text-primary" />
-            System Info
-          </CardTitle>
-        </CardHeader>
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <Monitor className="h-4 w-4 text-[#3b82f6]" />
+        <span className="text-[11px] font-bold uppercase tracking-widest text-[#a3a3a3]">
+          05 █ SYSTEM SPECIFICATION
+        </span>
+      </div>
 
-        <CardContent className="space-y-3">
-          {/* CPU */}
-          <div className="flex items-start gap-3">
-            <div className="rounded-md bg-blue-500/10 p-2">
-              <Cpu className="h-4 w-4 text-blue-500" />
+      {/* Specification Table */}
+      <div className="font-mono text-sm space-y-1">
+        <div className="flex justify-between border-b border-[#111] py-1.5">
+          <span className="text-[#8a8a8a] uppercase">HOST SYSTEM</span>
+          <span className="text-white truncate flex-1 min-w-0 text-right ml-4 font-bold" title={info.hostname}>
+            {info.hostname.toUpperCase()}
+          </span>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-[#111] py-1.5">
+          <span className="text-[#8a8a8a] uppercase">OPERATING SYS</span>
+          <span className="min-w-0 flex-1 truncate text-right text-[#bbb]" title={`${info.os_name} (${info.os_version})`}>
+            {info.os_name.toUpperCase()} ({info.os_version})
+          </span>
+        </div>
+        <div className="flex justify-between border-b border-[#111] py-1.5">
+          <span className="text-[#8a8a8a] uppercase">CENTRAL PROC</span>
+          <span className="text-[#bbb] truncate flex-1 min-w-0 text-right ml-4" title={info.cpu_name}>
+            {formatHardwareName(info.cpu_name)}
+          </span>
+        </div>
+        <div className="flex justify-between border-b border-[#111] py-1.5">
+          <span className="text-[#8a8a8a] uppercase">PROC CONFIG</span>
+          <span className="text-[#bbb]">{info.cpu_cores} Cores / {info.cpu_threads} Threads</span>
+        </div>
+        <div className="flex justify-between border-b border-[#111] py-1.5">
+          <span className="text-[#8a8a8a] uppercase">SYSTEM RAM</span>
+          <span className="text-[#bbb]">{formatBytes(info.ram_total, 0)}</span>
+        </div>
+        {info.gpu_name && (
+          <>
+            <div className="flex justify-between border-b border-[#111] py-1.5">
+              <span className="text-[#8a8a8a] uppercase">DISCRETE GPU</span>
+              <span className="text-[#bbb] truncate flex-1 min-w-0 text-right ml-4" title={info.gpu_name}>
+                {formatHardwareName(info.gpu_name)}
+              </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground">Processor</p>
-              <p className="text-sm font-medium truncate" title={info.cpu_name}>
-                {info.cpu_name}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {info.cpu_cores} cores / {info.cpu_threads} threads
-              </p>
-            </div>
-          </div>
-
-          {/* RAM */}
-          <div className="flex items-start gap-3">
-            <div className="rounded-md bg-green-500/10 p-2">
-              <MemoryStick className="h-4 w-4 text-green-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground">Memory</p>
-              <p className="text-sm font-medium">
-                {formatBytes(info.ram_total, 0)} RAM
-              </p>
-            </div>
-          </div>
-
-          {/* GPU */}
-          {info.gpu_name && (
-            <div className="flex items-start gap-3">
-              <div className="rounded-md bg-purple-500/10 p-2">
-                <MonitorPlay className="h-4 w-4 text-purple-500" />
+            {info.gpu_vram_total && (
+              <div className="flex justify-between border-b border-[#111] py-1.5">
+                <span className="text-[#8a8a8a] uppercase">GPU VRAM</span>
+                <span className="text-[#bbb]">{formatBytes(info.gpu_vram_total, 0)}</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground">Graphics</p>
-                <p className="text-sm font-medium truncate" title={info.gpu_name}>
-                  {info.gpu_name}
-                </p>
-                {info.gpu_vram_total && (
-                  <p className="text-xs text-muted-foreground">
-                    {formatBytes(info.gpu_vram_total, 0)} VRAM
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* OS & Uptime */}
-          <div className="flex items-start gap-3">
-            <div className="rounded-md bg-orange-500/10 p-2">
-              <Clock className="h-4 w-4 text-orange-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground">
-                {info.os_name} {info.os_version}
-              </p>
-              <p className="text-sm font-medium">
-                Uptime: {formatUptime(info.uptime_seconds)}
-              </p>
-              {info.hostname && (
-                <p className="text-xs text-muted-foreground truncate">
-                  {info.hostname}
-                </p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            )}
+          </>
+        )}
+        <div className="flex justify-between border-b border-[#111] py-1.5">
+          <span className="text-[#8a8a8a] uppercase">SYSTEM UPTIME</span>
+          <span className="text-[#10b981] font-bold">{formatUptime(info.uptime_seconds)}</span>
+        </div>
+      </div>
     </motion.div>
   );
 }

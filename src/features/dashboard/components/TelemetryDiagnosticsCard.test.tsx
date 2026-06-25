@@ -42,13 +42,13 @@ describe("TelemetryDiagnosticsCard", () => {
   it("shows a grouped Pulse footprint summary", () => {
     render(<TelemetryDiagnosticsCard diagnostics={diagnostics} />);
 
-    expect(screen.getByText("Pulse Footprint")).toBeTruthy();
-    expect(screen.getByText("Pulse process tree memory")).toBeTruthy();
+    expect(screen.getByText(/TELEMETRY SYSTEM FOOTPRINT/i)).toBeTruthy();
+    expect(screen.getByText(/TOTAL MEMORY ROOT/i)).toBeTruthy();
     expect(screen.getByText("160 MB")).toBeTruthy();
-    expect(screen.getByText("Pulse host")).toBeTruthy();
-    expect(screen.getByText("WebView2 UI runtime")).toBeTruthy();
-    expect(screen.getByText("2 processes")).toBeTruthy();
-    expect(screen.getByText("FPS sidecar")).toBeTruthy();
+    expect(screen.getByText("PULSE APP HOST")).toBeTruthy();
+    expect(screen.getByText("WEBVIEW2 UI RUNTIME")).toBeTruthy();
+    expect(screen.getByText("2 PROCS")).toBeTruthy();
+    expect(screen.getByText("FPS TELEMETRY SIDECAR")).toBeTruthy();
     expect(screen.getByText("2.5%")).toBeTruthy();
     expect(screen.getByText("1.0%")).toBeTruthy();
     expect(screen.queryByText("msedgewebview2.exe")).toBeNull();
@@ -57,7 +57,7 @@ describe("TelemetryDiagnosticsCard", () => {
   it("shows an empty state before diagnostics load", () => {
     render(<TelemetryDiagnosticsCard diagnostics={null} />);
 
-    expect(screen.getByText("Waiting for diagnostics...")).toBeTruthy();
+    expect(screen.getByText(/WAITING FOR TELEMETRY DIAGNOSTICS/i)).toBeTruthy();
     expect(screen.getByText("--")).toBeTruthy();
   });
 });

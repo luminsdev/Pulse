@@ -27,24 +27,24 @@
   }
 
   .dark {
-    --background: 224 71% 4%;
+    --background: 0 0% 1.2%;
     --foreground: 210 40% 98%;
-    --card: 224 71% 6%;
+    --card: 0 0% 3%;
     --card-foreground: 210 40% 98%;
-    --popover: 224 71% 6%;
+    --popover: 0 0% 3%;
     --popover-foreground: 210 40% 98%;
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 12%;
+    --secondary: 0 0% 6.7%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 12%;
-    --muted-foreground: 215 20.2% 55%;
-    --accent: 217.2 32.6% 15%;
+    --muted: 0 0% 6.7%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 8.2%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 14%;
-    --input: 217.2 32.6% 14%;
+    --border: 0 0% 8.2%;
+    --input: 0 0% 8.2%;
     --ring: 224.3 76.3% 48%;
   }
 }
@@ -98,6 +98,58 @@
 
   .animate-pulse-glow {
     animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  /* Hairline Console Grid container */
+  .console-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1px;
+    background-color: hsl(var(--border));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .grid-cell {
+    background-color: #080808;
+    padding: 1.25rem;
+  }
+
+  /* Segmented LED VU Meter */
+  .led-bar {
+    display: flex;
+    gap: 2px;
+    height: 10px;
+    margin-top: 0.5rem;
+    background: #0d0d0d;
+    padding: 2px;
+    border: 1px solid #1a1a1a;
+  }
+
+  .led-segment {
+    flex: 1;
+    background-color: #121212;
+    border-radius: 1px;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .led-segment.active-normal {
+    background-color: #3b82f6; /* Telemetry steel blue */
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.4);
+  }
+
+  .led-segment.active-warning {
+    background-color: #f59e0b; /* Telemetry warning amber */
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+  }
+
+  .led-segment.active-critical {
+    background-color: #ef4444; /* Telemetry danger red */
+    box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+  }
+
+  .led-segment.active-fps {
+    background-color: #10b981; /* Telemetry safe green */
+    box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
   }
 }
 

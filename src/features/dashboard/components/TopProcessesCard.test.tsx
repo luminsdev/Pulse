@@ -17,7 +17,7 @@ describe("TopProcessesCard", () => {
       />
     );
 
-    expect(screen.getByText("System Top Processes")).toBeTruthy();
+    expect(screen.getByText(/HOT RESOURCE PROCESSES/i)).toBeTruthy();
     expect(screen.getByText("msedgewebview2.exe")).toBeTruthy();
   });
 });

@@ -148,3 +148,19 @@ export function getTemperatureColor(
     };
   }
 }
+
+/**
+ * Sanitize hardware name for cleaner telemetry display
+ * e.g., "12th Gen Intel(R) Core(TM) i5-12450HX" -> "Intel Core i5-12450HX"
+ */
+export function formatHardwareName(name: string): string {
+  if (!name) return "UNKNOWN HARDWARE";
+  let clean = name;
+  // Remove "12th Gen ", "13th Gen ", etc.
+  clean = clean.replace(/\d+(th|st|nd|rd)\s+Gen\s+/ig, "");
+  // Remove (R), (TM), (c)
+  clean = clean.replace(/\([RTMrc]+\)/ig, "");
+  // Clean up extra spaces
+  clean = clean.replace(/\s+/g, " ").trim();
+  return clean;
+}

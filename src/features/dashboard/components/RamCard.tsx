@@ -1,144 +1,99 @@
-import { useMemo } from "react";
-import { MemoryStick, HardDrive } from "lucide-react";
+import { MemoryStick } from "lucide-react";
 import { motion } from "framer-motion";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { SystemChart, CircularProgress, ProgressBar, type ChartDataPoint } from "@/components/charts";
-import { formatBytes, formatPercent } from "@/lib/utils";
+import { LedVuMeter } from "@/components/charts";
+import { SkeletonLoader } from "@/components/common/SkeletonLoader";
+import { formatBytes } from "@/lib/utils";
 import type { RamStats } from "@/types/stats";
-import type { StatsHistoryPoint } from "../hooks/useSystemStats";
 
 interface RamCardProps {
   /** Current RAM stats */
   stats: RamStats | null;
-  /** History data for chart */
-  history: StatsHistoryPoint[];
 }
 
 /**
- * RAM/Memory monitoring card with realtime chart and metrics
+ * RAM monitoring cell for Precision Telemetry Console
  */
-export function RamCard({ stats, history }: RamCardProps) {
-  // Prepare chart data
-  const chartData: ChartDataPoint[] = useMemo(() => {
-    return history.map((point) => ({
-      timestamp: point.timestamp,
-      value: point.ramUsage,
-    }));
-  }, [history]);
-
+export function RamCard({ stats }: RamCardProps) {
   // Loading state
   if (!stats) {
-    return (
-      <Card className="relative overflow-hidden">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MemoryStick className="h-4 w-4" />
-            Memory
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex h-32 items-center justify-center text-muted-foreground">
-            Waiting for data...
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <SkeletonLoader label="RAM DETECTING / WAITING TELEMETRY..." lines={3} />;
   }
+
+  // Semantic Alerting
+  const isAlert = stats.usage_percent >= 90;
+  const accentColor = isAlert ? "text-red-500" : "text-emerald-500";
+  const pulseClass = isAlert ? "animate-pulse" : "";
+  const clampedUsagePercent = Number.isFinite(stats.usage_percent)
+    ? Math.min(Math.max(stats.usage_percent, 0), 100)
+    : 0;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: 0.05 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-4"
     >
-      <Card className="relative overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/5 hover:border-emerald-500/20 cursor-default">
-        {/* Header */}
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <MemoryStick className="h-4 w-4 text-emerald-500" />
-                Memory
-              </CardTitle>
-              <CardDescription className="mt-1 text-xs">
-                {formatBytes(stats.total)} Total
-              </CardDescription>
-            </div>
-            <CircularProgress
-              value={stats.usage_percent}
-              size={56}
-              strokeWidth={5}
-              color="hsl(152 69% 45%)"
-            />
-          </div>
-        </CardHeader>
+      {/* Header and Total */}
+      <div className={`flex items-center justify-between ${pulseClass}`}>
+        <div className="flex items-center gap-2">
+          <MemoryStick className={`h-4 w-4 ${accentColor}`} />
+          <span className="text-[11px] font-bold uppercase tracking-widest text-[#a3a3a3]">
+            02 █ SYSTEM MEMORY (RAM)
+          </span>
+        </div>
+        <span className="text-xs text-muted-foreground font-mono">
+          {formatBytes(stats.total)} TOTAL
+        </span>
+      </div>
 
-        <CardContent className="space-y-4">
-          {/* Memory Usage Bar */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Used</span>
-              <span className="font-medium">
-                {formatBytes(stats.used)} / {formatBytes(stats.total)}
-              </span>
-            </div>
-            <ProgressBar
-              value={stats.usage_percent}
-              color="hsl(152 69% 45%)"
-              height={10}
-            />
-          </div>
+      {/* Large Stat Display */}
+      <div className="flex items-baseline gap-1 pt-2">
+        <span className="text-4xl font-bold font-mono tracking-tight text-white tabular-nums">
+          {stats.usage_percent.toFixed(1)}
+        </span>
+        <span className="text-sm font-semibold text-[#737373] font-mono">%</span>
+      </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {/* Used */}
-            <div className="space-y-1">
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <HardDrive className="h-3 w-3" />
-                Used
-              </span>
-              <p className="font-medium">{formatBytes(stats.used)}</p>
-            </div>
+      {/* RAM Progress Line */}
+      <div className="space-y-1">
+        <div className="flex justify-between text-[11px] font-mono text-[#8a8a8a]">
+          <span>MEMORY USAGE</span>
+          <span className="text-[#bbb]">
+            {formatBytes(stats.used)} / {formatBytes(stats.total)}
+          </span>
+        </div>
+        <div className="h-2 bg-[#0d0d0d] border border-[#1a1a1a] p-[0.5px] rounded-sm">
+          <motion.div
+            className="h-full bg-emerald-500 rounded-sm"
+            animate={{ width: `${clampedUsagePercent}%` }}
+            transition={{ type: "spring", stiffness: 100, damping: 20 }}
+          />
+        </div>
+      </div>
 
-            {/* Available */}
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Available</span>
-              <p className="font-medium">{formatBytes(stats.available)}</p>
-            </div>
+      {/* Segmented LED VU Meter */}
+      <LedVuMeter value={stats.usage_percent} label="RAM load" />
 
-            {/* Usage Percent */}
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Usage</span>
-              <p className="font-medium">{formatPercent(stats.usage_percent)}</p>
-            </div>
-
-            {/* Free */}
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Free</span>
-              <p className="font-medium">
-                {formatPercent(100 - stats.usage_percent)}
-              </p>
-            </div>
-          </div>
-
-          {/* Realtime Chart */}
-          <div className="pt-2">
-            <SystemChart
-              data={chartData}
-              color="hsl(152 69% 45%)"
-              height={60}
-              label="RAM Usage"
-              gradientId="ramChart"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Stats Table Grid */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs font-mono">
+        <div className="flex justify-between border-b border-[#151515] pb-1">
+          <span className="text-[#8a8a8a] uppercase">USED</span>
+          <span className="text-[#bbb] font-medium">{formatBytes(stats.used)}</span>
+        </div>
+        <div className="flex justify-between border-b border-[#151515] pb-1">
+          <span className="text-[#8a8a8a] uppercase">AVAILABLE</span>
+          <span className="text-[#bbb] font-medium">{formatBytes(stats.available)}</span>
+        </div>
+        <div className="flex justify-between border-b border-[#151515] pb-1">
+          <span className="text-[#8a8a8a] uppercase">PERCENT USAGE</span>
+          <span className="text-[#bbb] font-medium">{stats.usage_percent.toFixed(1)}%</span>
+        </div>
+        <div className="flex justify-between border-b border-[#151515] pb-1">
+          <span className="text-[#8a8a8a] uppercase">FREE PERCENT</span>
+          <span className="text-[#bbb] font-medium">{(100 - stats.usage_percent).toFixed(1)}%</span>
+        </div>
+      </div>
     </motion.div>
   );
 }

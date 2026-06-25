@@ -11,12 +11,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import type { StatsHistoryPoint } from "../hooks/useSystemStats";
 
 interface PerformanceChartProps {
@@ -27,13 +22,13 @@ interface PerformanceChartProps {
 }
 
 const METRICS = {
-  cpu: { label: "CPU", color: "#3b82f6" },      // Blue
-  ram: { label: "RAM", color: "#22c55e" },      // Green  
-  gpu: { label: "GPU", color: "#a855f7" },      // Purple
+  cpu: { label: "CPU", color: "#3b82f6" },      // Steel Blue
+  ram: { label: "RAM", color: "#10b981" },      // Emerald Green
+  gpu: { label: "GPU", color: "#f59e0b" },      // Telemetry Orange
 };
 
 /**
- * Large performance chart showing all metrics together
+ * Oscilloscope-style timeline chart cell for Precision Telemetry Console
  */
 export function PerformanceChart({ history, hasGpu = true }: PerformanceChartProps) {
   // Prepare chart data
@@ -61,198 +56,199 @@ export function PerformanceChart({ history, hasGpu = true }: PerformanceChartPro
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: 0.2 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-4"
     >
-      <Card className="relative overflow-hidden">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              Performance History
-            </CardTitle>
-            <span className="text-xs text-muted-foreground">
-              Last {history.length} seconds
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-[#3b82f6]" />
+          <span className="text-[11px] font-bold uppercase tracking-widest text-[#a3a3a3]">
+            04 █ REAL-TIME SYSTEM OSCILLOSCOPE (60s HISTORY)
+          </span>
+        </div>
+        <span className="text-[11px] text-muted-foreground font-mono">
+          HISTORY SIZE: {history.length}s
+        </span>
+      </div>
+
+      {/* Current values row - Flat console grid layout */}
+      <div className="grid grid-cols-1 gap-2 font-mono text-xs sm:grid-cols-3">
+        {/* CPU */}
+        <div className="border border-[#151515] bg-[#0c0c0c] px-3 py-2 rounded-sm space-y-0.5">
+          <div className="flex items-center gap-1.5 text-[#8a8a8a] font-semibold text-[11px]">
+            <div className="h-2 w-2 rounded-full bg-[#3b82f6]" />
+            CPU TELEMETRY
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-bold text-white tabular-nums">
+              {current?.cpuUsage.toFixed(1) ?? "—"}%
+            </span>
+            <span className="text-[10px] text-[#737373] hidden xs:inline font-bold">
+              AVG {getAvg("cpuUsage").toFixed(0)}%
             </span>
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="space-y-4">
-          {/* Current values row - Responsive grid */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-4">
-            {/* CPU */}
-            <div className="flex flex-col xs:flex-row items-center gap-1.5 xs:gap-3 rounded-lg bg-blue-500/10 px-2 sm:px-3 py-2">
-              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-blue-500 shrink-0" />
-              <div className="text-center xs:text-left">
-                <p className="text-[10px] sm:text-xs text-muted-foreground">CPU</p>
-                <p className="text-base sm:text-lg font-semibold text-blue-500">
-                  {current?.cpuUsage.toFixed(1) ?? "—"}%
-                </p>
-                <p className="text-[10px] sm:text-xs text-muted-foreground hidden xs:block">
-                  avg {getAvg("cpuUsage").toFixed(0)}%
-                </p>
-              </div>
-            </div>
-
-            {/* RAM */}
-            <div className="flex flex-col xs:flex-row items-center gap-1.5 xs:gap-3 rounded-lg bg-green-500/10 px-2 sm:px-3 py-2">
-              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-green-500 shrink-0" />
-              <div className="text-center xs:text-left">
-                <p className="text-[10px] sm:text-xs text-muted-foreground">RAM</p>
-                <p className="text-base sm:text-lg font-semibold text-green-500">
-                  {current?.ramUsage.toFixed(1) ?? "—"}%
-                </p>
-                <p className="text-[10px] sm:text-xs text-muted-foreground hidden xs:block">
-                  avg {getAvg("ramUsage").toFixed(0)}%
-                </p>
-              </div>
-            </div>
-
-            {/* GPU */}
-            <div className="flex flex-col xs:flex-row items-center gap-1.5 xs:gap-3 rounded-lg bg-purple-500/10 px-2 sm:px-3 py-2">
-              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-purple-500 shrink-0" />
-              <div className="text-center xs:text-left">
-                <p className="text-[10px] sm:text-xs text-muted-foreground">GPU</p>
-                <p className="text-base sm:text-lg font-semibold text-purple-500">
-                  {hasGpu ? `${current?.gpuUsage.toFixed(1) ?? "—"}%` : "N/A"}
-                </p>
-                <p className="text-[10px] sm:text-xs text-muted-foreground hidden xs:block">
-                  {hasGpu ? `avg ${getAvg("gpuUsage").toFixed(0)}%` : "No GPU"}
-                </p>
-              </div>
-            </div>
+        {/* RAM */}
+        <div className="border border-[#151515] bg-[#0c0c0c] px-3 py-2 rounded-sm space-y-0.5">
+          <div className="flex items-center gap-1.5 text-[#8a8a8a] font-semibold text-[11px]">
+            <div className="h-2 w-2 rounded-full bg-[#10b981]" />
+            RAM TELEMETRY
           </div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-bold text-white tabular-nums">
+              {current?.ramUsage.toFixed(1) ?? "—"}%
+            </span>
+            <span className="text-[10px] text-[#737373] hidden xs:inline font-bold">
+              AVG {getAvg("ramUsage").toFixed(0)}%
+            </span>
+          </div>
+        </div>
 
-          {/* Combined Chart */}
-          <div className="h-[180px] sm:h-[220px] w-full">
-            {chartData.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                Collecting data...
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={chartData}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                >
-                  <defs>
-                    {/* CPU gradient */}
-                    <linearGradient id="gradientCpu" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={METRICS.cpu.color} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={METRICS.cpu.color} stopOpacity={0} />
-                    </linearGradient>
-                    {/* RAM gradient */}
-                    <linearGradient id="gradientRam" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={METRICS.ram.color} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={METRICS.ram.color} stopOpacity={0} />
-                    </linearGradient>
-                    {/* GPU gradient */}
-                    <linearGradient id="gradientGpu" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={METRICS.gpu.color} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={METRICS.gpu.color} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
+        {/* GPU */}
+        <div className="border border-[#151515] bg-[#0c0c0c] px-3 py-2 rounded-sm space-y-0.5">
+          <div className="flex items-center gap-1.5 text-[#8a8a8a] font-semibold text-[11px]">
+            <div className="h-2 w-2 rounded-full bg-[#f59e0b]" />
+            GPU TELEMETRY
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-bold text-white tabular-nums">
+              {hasGpu ? `${current?.gpuUsage.toFixed(1) ?? "—"}%` : "N/A"}
+            </span>
+            <span className="text-[10px] text-[#737373] hidden xs:inline font-bold">
+              {hasGpu ? `AVG ${getAvg("gpuUsage").toFixed(0)}%` : "NO GPU"}
+            </span>
+          </div>
+        </div>
+      </div>
 
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="hsl(var(--muted))"
-                    vertical={false}
-                  />
+      {/* Combined Oscilloscope Chart */}
+      <div className="h-[180px] sm:h-[200px] w-full bg-[#050505] border border-[#151515] p-2 rounded-sm relative">
+        {chartData.length === 0 ? (
+          <SkeletonLoader label="COLLECTING DATA FOR SWEEP..." lines={5} />
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={chartData}
+              margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
+            >
+              <defs>
+                <filter id="glow-cpu" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor={METRICS.cpu.color} floodOpacity="0.6"/>
+                </filter>
+                <filter id="glow-ram" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor={METRICS.ram.color} floodOpacity="0.6"/>
+                </filter>
+                <filter id="glow-gpu" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor={METRICS.gpu.color} floodOpacity="0.6"/>
+                </filter>
+              </defs>
 
-                  <XAxis
-                    dataKey="time"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    interval="preserveStartEnd"
-                    minTickGap={50}
-                  />
+              <CartesianGrid
+                strokeDasharray="2 2"
+                stroke="#151515"
+                vertical={false}
+              />
 
-                  <YAxis
-                    domain={[0, 100]}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    width={35}
-                    tickFormatter={(value) => `${value}%`}
-                  />
+              <XAxis
+                dataKey="time"
+                axisLine={{ stroke: "#151515" }}
+                tickLine={false}
+                tick={{ fill: "#737373", fontSize: 9, fontFamily: "monospace" }}
+                interval="preserveStartEnd"
+                minTickGap={50}
+              />
 
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="rounded-lg border bg-popover px-3 py-2 shadow-lg">
-                            <div className="space-y-1">
-                              {payload.map((entry) => (
-                                <div key={entry.dataKey} className="flex items-center gap-2 text-sm">
-                                  <div
-                                    className="h-2.5 w-2.5 rounded-full"
-                                    style={{ backgroundColor: entry.color }}
-                                  />
-                                  <span className="text-muted-foreground">
-                                    {entry.dataKey === "cpu" ? "CPU" : entry.dataKey === "ram" ? "RAM" : "GPU"}:
-                                  </span>
-                                  <span className="font-medium">
-                                    {Number(entry.value).toFixed(1)}%
-                                  </span>
-                                </div>
-                              ))}
+              <YAxis
+                domain={[0, 100]}
+                axisLine={{ stroke: "#151515" }}
+                tickLine={false}
+                tick={{ fill: "#737373", fontSize: 9, fontFamily: "monospace" }}
+                width={35}
+                tickFormatter={(value) => `${value}%`}
+              />
+
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="rounded-sm border border-[#151515] bg-[#0c0c0c]/95 px-2.5 py-1.5 font-mono text-[11px] shadow-2xl">
+                        <div className="space-y-1">
+                          {payload.map((entry) => (
+                            <div key={entry.dataKey} className="flex items-center gap-2">
+                              <div
+                                className="h-2 w-2 rounded-full"
+                                style={{ backgroundColor: entry.color }}
+                              />
+                              <span className="text-[#8a8a8a] uppercase font-bold">
+                                {entry.dataKey === "cpu" ? "CPU" : entry.dataKey === "ram" ? "RAM" : "GPU"}:
+                              </span>
+                              <span className="font-bold text-white tabular-nums">
+                                {Number(entry.value).toFixed(1)}%
+                              </span>
                             </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
 
-                  <Legend
-                    verticalAlign="top"
-                    height={30}
-                    formatter={(value) => (
-                      <span className="text-xs text-muted-foreground">
-                        {value === "cpu" ? "CPU" : value === "ram" ? "RAM" : "GPU"}
-                      </span>
-                    )}
-                  />
+              <Legend
+                verticalAlign="top"
+                height={25}
+                iconType="circle"
+                iconSize={6}
+                formatter={(value) => (
+                  <span className="text-[11px] font-mono font-bold text-[#8a8a8a] uppercase tracking-wider">
+                    {value === "cpu" ? "CPU LOAD" : value === "ram" ? "RAM LOAD" : "GPU LOAD"}
+                  </span>
+                )}
+              />
 
-                  {/* CPU Area */}
-                  <Area
-                    type="monotone"
-                    dataKey="cpu"
-                    stroke={METRICS.cpu.color}
-                    strokeWidth={2}
-                    fill="url(#gradientCpu)"
-                    isAnimationActive={false}
-                  />
+              {/* CPU Line */}
+              <Area
+                type="monotone"
+                dataKey="cpu"
+                stroke={METRICS.cpu.color}
+                strokeWidth={1.5}
+                fill="none"
+                isAnimationActive={false}
+                style={{ filter: "url(#glow-cpu)" }}
+              />
 
-                  {/* RAM Area */}
-                  <Area
-                    type="monotone"
-                    dataKey="ram"
-                    stroke={METRICS.ram.color}
-                    strokeWidth={2}
-                    fill="url(#gradientRam)"
-                    isAnimationActive={false}
-                  />
+              {/* RAM Line */}
+              <Area
+                type="monotone"
+                dataKey="ram"
+                stroke={METRICS.ram.color}
+                strokeWidth={1.5}
+                fill="none"
+                isAnimationActive={false}
+                style={{ filter: "url(#glow-ram)" }}
+              />
 
-                  {/* GPU Area (only if available) */}
-                  {hasGpu && (
-                    <Area
-                      type="monotone"
-                      dataKey="gpu"
-                      stroke={METRICS.gpu.color}
-                      strokeWidth={2}
-                      fill="url(#gradientGpu)"
-                      isAnimationActive={false}
-                    />
-                  )}
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              {/* GPU Line */}
+              {hasGpu && (
+                <Area
+                  type="monotone"
+                  dataKey="gpu"
+                  stroke={METRICS.gpu.color}
+                  strokeWidth={1.5}
+                  fill="none"
+                  isAnimationActive={false}
+                  style={{ filter: "url(#glow-gpu)" }}
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </motion.div>
   );
 }
