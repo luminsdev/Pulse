@@ -222,6 +222,16 @@
   .scrollbar-auto:hover::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.5);
   }
+
+  /* True OSD text stroke for flawless legibility on any background */
+  .osd-text {
+    text-shadow: 
+      -1px -1px 0 rgba(0,0,0, 0.9),  
+       1px -1px 0 rgba(0,0,0, 0.9),
+      -1px  1px 0 rgba(0,0,0, 0.9),
+       1px  1px 0 rgba(0,0,0, 0.9),
+       0px  2px 4px rgba(0,0,0, 0.7);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

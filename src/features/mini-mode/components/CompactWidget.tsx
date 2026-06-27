@@ -1,130 +1,112 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Cpu, MemoryStick, Gpu, Maximize2, X, Gamepad2 } from "lucide-react";
+import { Maximize2, Droplet } from "lucide-react";
 import type { SystemStatsPayload, FpsData, FpsSidecarStatusType } from "@/types/stats";
+import type { StatsHistoryPoint } from "@/features/dashboard/hooks/useSystemStats";
+import { Sparkline } from "./Sparkline";
 
 interface CompactWidgetProps {
   stats: SystemStatsPayload | null;
+  sysHistory?: StatsHistoryPoint[];
   onExpand: () => void;
   fpsData?: FpsData | null;
   fpsStatus?: FpsSidecarStatusType;
 }
 
-/** Format bytes to GB with 1 decimal */
+const DEFAULT_OPACITY = 40;
+const MINI_OPACITY_STORAGE_KEY = "pulse_mini_mode_opacity";
+const LABEL_COLOR = "#94a3b8"; // slate-400
+const MUTED_VALUE_COLOR = "#64748b"; // slate-500
+
 function formatGB(bytes: number): string {
   return (bytes / 1024 / 1024 / 1024).toFixed(1);
 }
 
-/** Get color based on usage percentage */
+function getFpsColor(fps: number): string {
+  if (fps >= 60) return "#a855f7"; // purple in mockup
+  if (fps >= 45) return "#3b82f6";
+  if (fps >= 30) return "#f59e0b";
+  if (fps > 0) return "#ef4444";
+  return "#a855f7"; // default purple
+}
+
+function getFpsStatusLabel(status: FpsSidecarStatusType): string {
+  switch (status) {
+    case "no_game":
+      return "No game";
+    case "not_installed":
+      return "No PM";
+    case "error":
+      return "Error";
+    case "stopped":
+      return "Stopped";
+    case "running":
+      return "Waiting";
+    case "not_started":
+      return "FPS off";
+  }
+}
+
+function getFpsStatusColor(status: FpsSidecarStatusType): string {
+  if (status === "error" || status === "not_installed") return "#ef4444";
+  if (status === "no_game") return "#f59e0b";
+  return MUTED_VALUE_COLOR;
+}
+
+/** Dynamic color based on usage percentage — used for values and sparklines */
 function getUsageColor(value: number): string {
-  if (value >= 90) return "#ef4444"; // red-500
-  if (value >= 70) return "#f59e0b"; // amber-500
-  if (value >= 50) return "#3b82f6"; // blue-500
-  return "#22c55e"; // green-500
+  if (value >= 91) return "#ef4444"; // red-500 — critical
+  if (value >= 76) return "#f97316"; // orange-500 — high
+  if (value >= 51) return "#f59e0b"; // amber-500 — moderate
+  return "#22c55e"; // green-500 — normal
 }
 
-/** Get color based on FPS value */
-function getFpsRingColor(fps: number): string {
-  if (fps >= 60) return "#22c55e"; // green-500
-  if (fps >= 45) return "#3b82f6"; // blue-500
-  if (fps >= 30) return "#f59e0b"; // amber-500
-  if (fps > 0) return "#ef4444"; // red-500
-  return COLORS.fps;
+function readSavedOpacity(): number {
+  const saved = window.localStorage.getItem(MINI_OPACITY_STORAGE_KEY);
+  if (saved === null) return DEFAULT_OPACITY;
+
+  const parsed = Number(saved);
+  if (!Number.isFinite(parsed)) return DEFAULT_OPACITY;
+
+  return Math.min(100, Math.max(0, Math.round(parsed)));
 }
 
-/** Color constants for sub-labels */
-const COLORS = {
-  temp: "#f97316",    // orange-500 - warm color for temperature
-  power: "#eab308",   // yellow-500 - energy color
-  ram: "#38bdf8",     // sky-400 - cool color for memory
-  fps: "#a855f7",     // purple-500 - gaming color
-  separator: "rgba(255, 255, 255, 0.3)",
-} as const;
-
-/** Mini ring progress indicator */
-function RingProgress({
-  value,
-  size = 52,
-  strokeWidth = 3.5,
-  color,
-  children,
-}: {
-  value: number;
-  size?: number;
-  strokeWidth?: number;
-  color: string;
-  children?: React.ReactNode;
-}) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (Math.min(value, 100) / 100) * circumference;
-
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg
-        width={size}
-        height={size}
-        className="transform -rotate-90"
-      >
-        {/* Background circle */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="rgba(255, 255, 255, 0.08)"
-          strokeWidth={strokeWidth}
-        />
-        {/* Progress circle */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="transition-all duration-500 ease-out"
-          style={{
-            filter: `drop-shadow(0 0 4px ${color}40)`,
-          }}
-        />
-      </svg>
-      {/* Center content */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Compact overlay widget for mini mode
- * Modern design with ring progress indicators
- */
-export function CompactWidget({ stats, onExpand, fpsData, fpsStatus = "not_started" }: CompactWidgetProps) {
+export function CompactWidget({ 
+  stats, 
+  sysHistory = [], 
+  onExpand, 
+  fpsData, 
+  fpsStatus = "not_started"
+}: CompactWidgetProps) {
   const cpu = stats?.cpu;
   const ram = stats?.ram;
   const gpu = stats?.gpu;
+  const hasGpu = gpu != null;
 
   const cpuValue = cpu?.usage ?? 0;
   const ramValue = ram?.usage_percent ?? 0;
   const gpuValue = gpu?.usage ?? 0;
   
-  // FPS display - show FPS value as percentage of 60 FPS target for the ring
   const fpsValue = fpsData?.fps ?? 0;
-  const fpsRingValue = Math.min((fpsValue / 144) * 100, 100); // 144 FPS as max for ring
   const hasFps = fpsStatus === "running" && fpsData != null;
-  const fpsColor = hasFps ? getFpsRingColor(fpsValue) : "#525252";
+  const fpsColor = hasFps ? getFpsColor(fpsValue) : "#525252";
+  const fpsDisplayColor = hasFps ? fpsColor : getFpsStatusColor(fpsStatus);
 
-  const handleClose = async () => {
-    try {
-      onExpand();
-    } catch (error) {
-      console.error("Failed to close mini window:", error);
-    }
-  };
+  const cpuColor = getUsageColor(cpuValue);
+  const gpuColor = hasGpu ? getUsageColor(gpuValue) : MUTED_VALUE_COLOR;
+  const ramColor = getUsageColor(ramValue);
+
+  const cpuHistory = sysHistory.map(h => h.cpuUsage);
+  const gpuHistory = hasGpu ? sysHistory.map(h => h.gpuUsage) : [];
+  const ramHistory = sysHistory.map(h => h.ramUsage);
+
+  const [opacity, setOpacity] = useState(readSavedOpacity);
+
+  useEffect(() => {
+    window.localStorage.setItem(MINI_OPACITY_STORAGE_KEY, opacity.toString());
+  }, [opacity]);
+
+  const isOsdMode = opacity < 20;
 
   return (
     <motion.div
@@ -133,209 +115,105 @@ export function CompactWidget({ stats, onExpand, fpsData, fpsStatus = "not_start
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="mini-widget h-screen w-screen select-none"
     >
-      {/* Main container with glassmorphism */}
-      <div className="relative h-full w-full rounded-2xl border border-white/[0.08] bg-[#0a0a0a]/90 backdrop-blur-2xl shadow-2xl overflow-hidden">
-        {/* Subtle gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.03] via-transparent to-black/20 pointer-events-none" />
+      <div className="relative h-full w-full rounded-2xl flex flex-col justify-center overflow-hidden">
+        
+        {/* Layer 1: The Color & Blur Box */}
+        <div 
+          className="absolute inset-0 z-0 rounded-2xl transition-all duration-200 pointer-events-none"
+          style={{ 
+            backgroundColor: `rgba(15, 15, 15, ${opacity / 100})`,
+            border: opacity >= 20 ? `1px solid rgba(255, 255, 255, ${(opacity / 100) * 0.15})` : 'none',
+            boxShadow: opacity >= 20 ? `0 10px 30px rgba(0,0,0, ${(opacity / 100) * 0.5})` : 'none',
+            backdropFilter: opacity >= 20 ? 'blur(12px)' : 'none',
+            WebkitBackdropFilter: opacity >= 20 ? 'blur(12px)' : 'none'
+          }}
+        />
         
         {/* Drag region */}
-        <div
-          data-tauri-drag-region
-          className="absolute inset-0 cursor-move"
-        />
+        <div data-tauri-drag-region className="absolute inset-0 cursor-move z-10" />
 
-        {/* Header - minimal */}
-        <div className="relative z-10 flex items-center justify-between px-3 py-2">
-          <div className="flex items-center gap-1.5" data-tauri-drag-region>
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.6)]" />
-            <span className="text-[10px] font-medium text-white/40 uppercase tracking-widest">
-              Pulse
-            </span>
+        {/* Floating actions */}
+        <div className="absolute top-1 right-2 z-30 flex items-center gap-1 group/slider">
+          <input 
+            type="range" 
+            min="0" max="100" 
+            value={opacity}
+            onChange={(e) => setOpacity(Math.min(100, Math.max(0, Number(e.currentTarget.value))))}
+            className="pointer-events-none w-20 opacity-0 group-hover/slider:pointer-events-auto group-hover/slider:opacity-100 group-focus-within/slider:pointer-events-auto group-focus-within/slider:opacity-100 focus:pointer-events-auto focus:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/70 transition-opacity accent-white/80 cursor-pointer"
+            aria-label="Background opacity"
+            title="Background Opacity"
+          />
+          <div className="p-1.5 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors cursor-help" title="Opacity Slider" aria-hidden="true">
+            <Droplet className="h-3 w-3 text-white/40" />
           </div>
-          <div className="flex items-center gap-0.5">
-            <button
-              onClick={onExpand}
-              className="p-1.5 rounded-lg hover:bg-white/10 active:bg-white/5 transition-all duration-150 group"
-              title="Expand to full window"
-            >
-              <Maximize2 className="h-3 w-3 text-white/40 group-hover:text-white/80 transition-colors" />
-            </button>
-            <button
-              onClick={handleClose}
-              className="p-1.5 rounded-lg hover:bg-red-500/20 active:bg-red-500/10 transition-all duration-150 group"
-              title="Close"
-            >
-              <X className="h-3 w-3 text-white/40 group-hover:text-red-400 transition-colors" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onExpand}
+            className="p-1.5 rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/70 transition-colors"
+            aria-label="Expand to full window"
+            title="Expand"
+          >
+            <Maximize2 className="h-3 w-3 text-white/40 hover:text-white" />
+          </button>
         </div>
 
-        {/* Metrics - 4 ring indicators */}
-        <div className="relative z-10 grid grid-cols-4 gap-4 px-3 pb-3.5 pt-0.5 place-items-center">
+        {/* Content */}
+        <div className={`relative z-20 flex items-center justify-center px-3 gap-3 ${isOsdMode ? 'osd-text' : ''}`}>
+          
           {/* CPU */}
-          <MetricRing
-            icon={<Cpu className="h-4 w-4" />}
-            label="CPU"
-            value={cpuValue}
-            color={getUsageColor(cpuValue)}
-            subLabelContent={
-              <TempPowerLabel temp={cpu?.temperature} power={cpu?.power} />
-            }
-          />
-
-          {/* RAM */}
-          <MetricRing
-            icon={<MemoryStick className="h-4 w-4" />}
-            label="RAM"
-            value={ramValue}
-            color={getUsageColor(ramValue)}
-            subLabelContent={
-              ram ? <RamLabel used={ram.used} total={ram.total} /> : undefined
-            }
-          />
+          <div className="flex w-20 flex-col gap-[3px] relative">
+            <div className="flex justify-between items-baseline">
+              <span className="text-[14px] font-mono" style={{ color: LABEL_COLOR }}>CPU</span>
+              <span className="text-[19px] font-bold font-mono" style={{ color: cpuColor }}>{Math.round(cpuValue)}%</span>
+            </div>
+            <div className="flex justify-between items-center text-[14px] font-mono">
+              <span className="text-[#f97316] font-medium">{cpu?.temperature ? Math.round(cpu.temperature) + '°' : '--'}</span>
+              <span className="text-[#eab308] font-medium">{cpu?.power ? Math.round(cpu.power) + 'W' : '--'}</span>
+            </div>
+            <div className={`mt-[2px] ${isOsdMode ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}`}><Sparkline data={cpuHistory} color={cpuColor} width={80} /></div>
+          </div>
 
           {/* GPU */}
-          <MetricRing
-            icon={<Gpu className="h-4 w-4" />}
-            label="GPU"
-            value={gpuValue}
-            color={gpu ? getUsageColor(gpuValue) : "#525252"}
-            disabled={!gpu}
-            subLabelContent={
-              gpu ? <TempPowerLabel temp={gpu.temperature} power={gpu.power} /> : undefined
-            }
-          />
+          <div className="flex w-20 flex-col gap-[3px] relative">
+            <div className="flex justify-between items-baseline">
+              <span className="text-[14px] font-mono" style={{ color: LABEL_COLOR }}>GPU</span>
+              <span className="text-[19px] font-bold font-mono" style={{ color: gpuColor }}>{hasGpu ? `${Math.round(gpuValue)}%` : "--"}</span>
+            </div>
+            <div className="flex justify-between items-center text-[14px] font-mono">
+              <span className="text-[#f97316] font-medium">{gpu?.temperature ? Math.round(gpu.temperature) + '°' : '--'}</span>
+              <span className="text-[#eab308] font-medium">{gpu?.power ? Math.round(gpu.power) + 'W' : '--'}</span>
+            </div>
+            <div className={`mt-[2px] ${isOsdMode ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}`}><Sparkline data={gpuHistory} color={gpuColor} width={80} /></div>
+          </div>
+
+          {/* RAM */}
+          <div className="flex w-20 flex-col gap-[3px]">
+            <div className="flex justify-between items-baseline">
+              <span className="text-[14px] font-mono" style={{ color: LABEL_COLOR }}>RAM</span>
+              <span className="text-[19px] font-bold font-mono" style={{ color: ramColor }}>{Math.round(ramValue)}%</span>
+            </div>
+            <div className="flex justify-center text-[11px] font-mono text-[#38bdf8] font-medium whitespace-nowrap">
+              {ram ? `${formatGB(ram.used)}/${formatGB(ram.total)}GB` : '--'}
+            </div>
+            <div className={`mt-[2px] ${isOsdMode ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}`}><Sparkline data={ramHistory} color={ramColor} width={80} /></div>
+          </div>
 
           {/* FPS */}
-          <MetricRing
-            icon={<Gamepad2 className="h-4 w-4" />}
-            label="FPS"
-            value={fpsRingValue}
-            color={fpsColor}
-            disabled={!hasFps}
-            displayValue={hasFps ? `${Math.round(fpsValue)}` : undefined}
-            subLabelContent={!hasFps ? <FpsStatusLabel status={fpsStatus} /> : undefined}
-          />
+          <div className={`flex h-[48px] w-[52px] flex-col justify-center gap-[2px] border-l pl-3 ${isOsdMode ? 'border-transparent' : 'border-white/10'}`}>
+            <div className="text-center text-[12px] font-mono tracking-[1px]" style={{ color: fpsDisplayColor, opacity: 0.8 }}>FPS</div>
+            {hasFps ? (
+              <div className="text-center text-[26px] font-bold font-mono leading-none" style={{ color: fpsDisplayColor }}>
+                {Math.round(fpsValue)}
+              </div>
+            ) : (
+              <div className="whitespace-nowrap text-center text-[10px] font-semibold font-mono leading-none" style={{ color: fpsDisplayColor }}>
+                {getFpsStatusLabel(fpsStatus)}
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </motion.div>
   );
 }
-
-/** Temperature and Power label with colors */
-function TempPowerLabel({ temp, power }: { temp?: number | null; power?: number | null }) {
-  const hasTemp = temp != null && temp > 0;
-  const hasPower = power != null && power > 0;
-
-  if (!hasTemp && !hasPower) {
-    return null;
-  }
-
-  return (
-    <span className="text-[11px] font-medium tabular-nums flex items-center gap-1">
-      {hasTemp && (
-        <span style={{ color: COLORS.temp }}>{Math.round(temp)}°</span>
-      )}
-      {hasTemp && hasPower && (
-        <span style={{ color: COLORS.separator }}>•</span>
-      )}
-      {hasPower && (
-        <span style={{ color: COLORS.power }}>{Math.round(power)}W</span>
-      )}
-    </span>
-  );
-}
-
-/** RAM usage label with color */
-function RamLabel({ used, total }: { used: number; total: number }) {
-  return (
-    <span className="text-[11px] font-medium tabular-nums" style={{ color: COLORS.ram }}>
-      {formatGB(used)}/{formatGB(total)}G
-    </span>
-  );
-}
-
-/** FPS status label for mini mode */
-function FpsStatusLabel({ status }: { status: FpsSidecarStatusType }) {
-  let text = "FPS";
-
-  switch (status) {
-    case "no_game":
-      text = "No game";
-      break;
-    case "not_installed":
-      text = "No PM";
-      break;
-    case "error":
-      text = "Error";
-      break;
-    case "stopped":
-      text = "Stopped";
-      break;
-    case "not_started":
-      text = "Init";
-      break;
-    default:
-      text = "FPS";
-  }
-
-  return (
-    <span className="text-[11px] text-white/40 font-medium">
-      {text}
-    </span>
-  );
-}
-
-interface MetricRingProps {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  color: string;
-  disabled?: boolean;
-  subLabelContent?: React.ReactNode;
-  displayValue?: string;
-}
-
-function MetricRing({
-  icon,
-  label,
-  value,
-  color,
-  disabled,
-  subLabelContent,
-  displayValue,
-}: MetricRingProps) {
-  return (
-    <motion.div 
-      className={`flex flex-col items-center gap-1.5 ${disabled ? "opacity-40" : ""}`}
-      whileHover={disabled ? undefined : { scale: 1.05 }}
-      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-    >
-      <RingProgress value={disabled ? 0 : value} color={color} size={52} strokeWidth={3.5}>
-        <span 
-          className={disabled ? "text-white/30" : "text-white/90"} 
-          style={{ color: disabled ? undefined : color }}
-        >
-          {icon}
-        </span>
-      </RingProgress>
-      
-      <div className="flex flex-col items-center">
-        {/* Percentage value - larger and more prominent */}
-        <span className="text-[15px] font-semibold text-white/95 tabular-nums leading-none tracking-tight">
-          {disabled
-            ? "—"
-            : displayValue ?? `${Math.round(value)}%`}
-        </span>
-        {/* Sub-label: colored temp/power or RAM usage */}
-        <div className="mt-1 min-h-[14px] flex items-center justify-center">
-          {subLabelContent || (
-            <span className="text-[11px] text-white/40 font-medium">{label}</span>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-export default CompactWidget;

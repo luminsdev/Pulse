@@ -315,6 +315,13 @@ pub fn run() {
                 tracing::error!("[Tray] Failed to setup tray: {}", e);
             }
 
+            // Disable shadow on mini window (Windows DWM can add a border even with decorations: false)
+            if let Some(mini) = app.get_webview_window("mini") {
+                if let Err(e) = mini.set_shadow(false) {
+                    tracing::warn!("[App] Failed to disable mini window shadow: {}", e);
+                }
+            }
+
             // Create the temperature sidecar lazily; UI surfaces start it on demand.
             let (sidecar_state, sidecar_manager) = create_sidecar();
 
