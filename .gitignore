@@ -42,6 +42,7 @@ packages/
 # Rust/Tauri build
 src-tauri/target/
 skills-lock.json
+.codegraph/
 
 # Misc
 *.bak

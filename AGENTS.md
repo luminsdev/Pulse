@@ -65,6 +65,12 @@ Use PowerShell-compatible commands on Windows. The package manager is `pnpm`; ke
 - Check Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`
 - Test FPS sidecar: `dotnet test src-tauri\sidecar\fps-sidecar.Tests\fps-sidecar.Tests.csproj`
 
+## CodeGraph
+
+- If `.codegraph/` exists, use CodeGraph for semantic code exploration before falling back to broad grep/read passes.
+- OpenCode MCP tool: `codegraph_explore`; shell fallback: `codegraph explore "query"`.
+- Keep `.codegraph/` local-only and out of git; rebuild with `codegraph sync` or `codegraph index` if results look stale.
+
 ## Frontend Guidelines
 
 - Use strict TypeScript. Avoid `any`; prefer explicit interfaces and shared types in `src/types` when data crosses the Rust/frontend boundary.
