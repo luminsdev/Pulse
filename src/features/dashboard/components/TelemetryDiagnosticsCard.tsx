@@ -19,7 +19,6 @@ interface DiagnosticsGroup {
 const GROUP_ORDER: DiagnosticProcessRole[] = [
   "pulse",
   "web_view",
-  "lhm_sidecar",
   "fps_sidecar",
   "present_mon",
   "other",
@@ -31,8 +30,6 @@ function formatRoleLabel(role: DiagnosticProcessRole): string {
       return "PULSE APP HOST";
     case "web_view":
       return "WEBVIEW2 UI RUNTIME";
-    case "lhm_sidecar":
-      return "TEMPERATURE SENSOR SIDECAR";
     case "fps_sidecar":
       return "FPS TELEMETRY SIDECAR";
     case "present_mon":

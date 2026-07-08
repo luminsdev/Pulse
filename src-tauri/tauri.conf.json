@@ -51,7 +51,6 @@
     "active": true,
     "targets": "all",
     "externalBin": [
-      "binaries/lhm-sidecar",
       "binaries/fps-sidecar",
       "binaries/presentmon"
     ],

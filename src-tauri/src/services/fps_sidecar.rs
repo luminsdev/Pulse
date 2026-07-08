@@ -279,6 +279,8 @@ impl SidecarHandler for FpsSidecarHandler {
 }
 
 pub type FpsSidecarManager = SidecarRunner<FpsSidecarHandler>;
+pub type FpsManager = FpsSidecarManager;
+pub type FpsState = FpsSidecarState;
 
 /// Create FPS sidecar state and manager without starting the process.
 pub fn create_fps_sidecar() -> (Arc<FpsSidecarState>, FpsSidecarManager) {

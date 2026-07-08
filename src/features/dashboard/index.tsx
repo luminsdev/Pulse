@@ -105,7 +105,7 @@ export function Dashboard() {
         {/* CPU Cell */}
         <div className="grid-cell col-span-12 md:col-span-4">
           <CardErrorBoundary>
-            <CpuCard stats={stats?.cpu ?? null} />
+            <CpuCard stats={stats?.cpu ?? null} temperatureStatus={sidecarStatus?.status} />
           </CardErrorBoundary>
         </div>
 

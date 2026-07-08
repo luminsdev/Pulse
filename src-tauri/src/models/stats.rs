@@ -33,9 +33,9 @@ pub struct CpuStats {
     pub cores: usize,
     pub logical_cores: usize,
     pub per_core_usage: Vec<f32>,
-    pub temperature: Option<f32>,            // Celsius (from sidecar)
-    pub core_temperatures: Option<Vec<f32>>, // Per-core temps (from sidecar)
-    pub power: Option<f32>,                  // Watts (from sidecar)
+    pub temperature: Option<f32>, // Celsius (from external sensor provider)
+    pub core_temperatures: Option<Vec<f32>>, // Per-core temps (from external sensor provider)
+    pub power: Option<f32>,       // Watts (from external sensor provider)
 }
 
 /// RAM/Memory statistics
@@ -55,11 +55,11 @@ pub struct GpuStats {
     pub memory_total: u64,                 // bytes
     pub memory_used: u64,                  // bytes
     pub temperature: Option<f32>,          // Celsius
-    pub hot_spot_temperature: Option<f32>, // Celsius - GPU hottest point (from sidecar)
+    pub hot_spot_temperature: Option<f32>, // Celsius - GPU hottest point (from external sensor provider)
     pub fan_speed: Option<f32>,            // 0-100%
-    pub power: Option<f32>,                // Watts (from sidecar)
-    pub core_clock: Option<f32>,           // MHz (from sidecar)
-    pub memory_clock: Option<f32>,         // MHz (from sidecar)
+    pub power: Option<f32>,                // Watts (from external sensor provider)
+    pub core_clock: Option<f32>,           // MHz (from external sensor provider)
+    pub memory_clock: Option<f32>,         // MHz (from external sensor provider)
 }
 
 /// Combined system statistics payload

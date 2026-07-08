@@ -11,9 +11,9 @@ Pulse has two frontend surfaces:
 - `main` window: a full dashboard for CPU, RAM, GPU, process, temperature, FPS, and Pulse footprint diagnostics.
 - `mini` window: a compact transparent always-on-top overlay for at-a-glance telemetry.
 
-The Rust backend owns system monitoring, Tauri commands, tray/window behavior, telemetry diagnostics, and sidecar lifecycle management. External sidecars provide data that Rust cannot reliably collect directly:
+The Rust backend owns system monitoring, Tauri commands, tray/window behavior, telemetry diagnostics, sensor-provider reads, and sidecar lifecycle management. External providers fill data that Rust cannot reliably collect directly:
 
-- `lhm-sidecar`: LibreHardwareMonitor-based temperature, power, clock, and fan telemetry.
+- HWiNFO64 shared memory: external sensor-provider source for temperature, power, clock, and fan telemetry. Pulse reads it only when HWiNFO Sensors + Shared Memory Support are already running.
 - `fps-sidecar`: .NET/PresentMon-based FPS telemetry, started lazily from the dashboard and stopped when idle.
 
 ## Agent Operating Principles
@@ -100,14 +100,14 @@ Use PowerShell-compatible commands on Windows. The package manager is `pnpm`; ke
 - Important command wrappers include system stats, logs, telemetry diagnostics, sensor lifecycle, FPS lifecycle, GPU support, and mini-window controls.
 - Preserve event names consumed by the frontend: `system-info`, `system-stats`, `process-list`, `sidecar-status`, and `fps-stats`.
 - Preserve status strings unless updating Rust models, TypeScript types, UI copy, tests, and sidecar contracts together.
-- Sensor sidecar statuses include `not_started`, `running`, `stopped`, `error`, `requires_admin`, and `binary_not_found`.
+- Sensor provider statuses include `not_started`, `running`, `provider_unavailable`, and `error`.
 - FPS statuses include `not_started`, `running`, `no_game`, `stopped`, `error`, and `not_installed`.
 - FPS sidecar stdout output types include `fps-data`, `no-game`, and `error`.
 
 ## Sidecar And Packaging Guidelines
 
 - Treat sidecars as process boundaries with stdout JSON contracts. Validate contract changes on both sides of the boundary.
-- `lhm-sidecar` provides hardware sensor enrichment; do not weaken restart, stall, missing-binary, or permission handling.
+- HWiNFO shared memory provides hardware sensor enrichment; do not add Pulse-owned sensor drivers, elevation requirements, or HWiNFO process management.
 - `fps-sidecar` is intentionally lazy. It should not start at app launch; the dashboard owns Start/Stop controls, while mini mode is display-only.
 - The FPS sidecar should clear stale FPS data on errors and stop the process tree on fatal PresentMon errors or sustained `no_game` idleness.
 - PresentMon is bundled from `src-tauri/vendor/presentmon/` into `src-tauri/binaries/presentmon-x86_64-pc-windows-msvc.exe` by `scripts/build-fps-sidecar.ps1`.
@@ -120,14 +120,14 @@ Use PowerShell-compatible commands on Windows. The package manager is `pnpm`; ke
 - Follow `PRODUCT.md`: Pulse should feel precise, technical, calm, and like a polished telemetry instrument rather than a generic analytics dashboard.
 - Main dashboard changes must remain responsive across narrow and wide windows.
 - Mini mode must stay compact, readable, transparent-friendly, and usable as an always-on-top widget.
-- Monitoring states must be understandable: loading, live, no GPU, no game, missing sidecar, missing PresentMon, permission/admin limits, and error states.
+- Monitoring states must be understandable: loading, live, no GPU, no game, missing sensor provider, missing PresentMon, permission/provider limits, and error states.
 - Prefer focused components over large rewrites. Reuse existing cards, charts, progress bars, status banners, and token vocabulary.
 - Do not introduce generic SaaS dashboard visuals, decorative card grids, unclear glass effects, or animations that obscure live monitoring state.
 - Maintain accessibility basics: readable contrast, keyboard-reachable controls, non-color-only critical states, legible labels, and reduced-motion-safe animation.
 
 ## Known Project Context
 
-- Telemetry diagnostics intentionally reports the current Pulse process tree only: Pulse, WebView2, LHM sidecar, FPS sidecar, and PresentMon descendants.
+- Telemetry diagnostics intentionally reports the current Pulse process tree only: Pulse, WebView2, FPS sidecar, and PresentMon descendants. HWiNFO is external and should not be grouped as a Pulse child process.
 - `TopProcessesCard` is system-wide process telemetry, while telemetry diagnostics is Pulse footprint telemetry. Keep that distinction clear in UI copy.
 - The README is still the default Tauri template; do not rely on it for current architecture details.
 - A known FPS follow-up exists: if PresentMon emits only excluded process rows, the parser may fail to emit `no-game`, leaving FPS status as `running`.
@@ -147,7 +147,7 @@ Manual runtime checks for relevant changes:
 
 - Main window opens and receives live `system-stats`.
 - Mini mode toggles from the dashboard and tray, remains readable, and does not break sensor leases.
-- Temperature monitoring handles available, missing, permission-limited, and failed sidecar states.
+- Temperature monitoring handles available, missing, permission-limited, and failed external sensor-provider states.
 - FPS monitoring handles started, stopped, game detected, no game detected, PresentMon missing, and FPS sidecar error states.
 - Telemetry diagnostics shows Pulse footprint without mixing in unrelated system processes.
 - GPU-absent systems render without crashes.

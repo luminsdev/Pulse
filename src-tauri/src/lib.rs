@@ -21,34 +21,32 @@ use commands::{
     SensorMonitorLeaseState, TelemetryDiagnosticsState,
 };
 use services::{
-    create_fps_sidecar, create_sidecar, start_fps_emitter, FpsSidecarManager, FpsSidecarState,
-    SidecarManager, SidecarState, SidecarStatusInfo, SystemMonitor, TelemetryDiagnosticsService,
+    apply_snapshot_to_payload, create_fps_sidecar, start_fps_emitter, FpsManager, FpsState,
+    HwinfoSensorMonitor, HwinfoSensorStatusInfo, SystemMonitor, TelemetryDiagnosticsService,
 };
 
-use models::GpuStats;
-
-/// Shared state for sidecar data
+/// Shared state for sensor and sidecar data
 pub struct AppState {
-    pub sidecar: Arc<SidecarState>,
-    pub fps_sidecar: Arc<FpsSidecarState>,
+    pub sensors: Arc<HwinfoSensorMonitor>,
+    pub fps_sidecar: Arc<FpsState>,
 }
 
 /// Payload for sidecar status event
 #[derive(serde::Serialize, Clone)]
 pub(crate) struct SidecarStatusPayload {
     #[serde(flatten)]
-    pub(crate) status: SidecarStatusInfo,
+    pub(crate) status: HwinfoSensorStatusInfo,
     pub(crate) restart_count: u32,
     pub(crate) can_restart: bool,
 }
 
 /// Start a background thread that emits system stats every second
-/// Merges data from sysinfo (basic stats) with sidecar (temperatures)
-fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) {
+/// Merges data from sysinfo with the external HWiNFO sensor provider.
+fn start_stats_emitter(app: tauri::AppHandle, sensors: Arc<HwinfoSensorMonitor>) {
     thread::spawn(move || {
         let mut monitor = SystemMonitor::new();
 
-        // Wait a bit for sidecar to be ready
+        // Wait a bit for sensors to be ready.
         thread::sleep(Duration::from_secs(2));
 
         monitor.refresh_stats();
@@ -64,73 +62,15 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
         let mut process_refresh_tick = 0_u8;
 
         loop {
+            sensors.poll();
+            let sensor_snapshot = sensors.latest_snapshot();
+
             // Refresh sysinfo data
             monitor.refresh_stats();
             let mut stats = monitor.get_system_stats_payload();
 
-            // Merge temperature data from sidecar if available
-            if let Some(sidecar_data) = sidecar_state.get_data() {
-                // CPU temperature from sidecar
-                if let Some(cpu_data) = &sidecar_data.cpu {
-                    stats.cpu.temperature = cpu_data.temperature;
-                    stats.cpu.power = cpu_data.power;
-
-                    // Core temperatures - filter out None values
-                    if !cpu_data.core_temperatures.is_empty() {
-                        let temps: Vec<f32> = cpu_data
-                            .core_temperatures
-                            .iter()
-                            .filter_map(|t| *t)
-                            .collect();
-                        if !temps.is_empty() {
-                            stats.cpu.core_temperatures = Some(temps);
-                        }
-                    }
-                }
-
-                // GPU data from sidecar (first GPU if available)
-                if let Some(gpu_data) = sidecar_data.gpu.first() {
-                    if let Some(ref mut gpu) = stats.gpu {
-                        // Use sidecar GPU temp if available
-                        if let Some(temp) = gpu_data.temperature {
-                            gpu.temperature = Some(temp);
-                        }
-                        // Hot spot temperature
-                        gpu.hot_spot_temperature = gpu_data.hot_spot_temperature;
-                        // Power consumption
-                        gpu.power = gpu_data.power;
-                        // Core clock
-                        gpu.core_clock = gpu_data.core_clock;
-                        // Memory clock
-                        gpu.memory_clock = gpu_data.memory_clock;
-                        // Use sidecar fan speed if available and we don't have it
-                        if gpu.fan_speed.is_none() {
-                            gpu.fan_speed = gpu_data.fan_speed;
-                        }
-                    } else {
-                        stats.gpu = Some(GpuStats {
-                            name: gpu_data
-                                .name
-                                .clone()
-                                .or_else(|| {
-                                    gpu_data
-                                        .vendor
-                                        .as_ref()
-                                        .map(|vendor| format!("{} GPU", vendor))
-                                })
-                                .unwrap_or_else(|| "Unknown GPU".to_string()),
-                            usage: gpu_data.load.unwrap_or(0.0),
-                            memory_total: 0,
-                            memory_used: 0,
-                            temperature: gpu_data.temperature,
-                            hot_spot_temperature: gpu_data.hot_spot_temperature,
-                            fan_speed: gpu_data.fan_speed,
-                            power: gpu_data.power,
-                            core_clock: gpu_data.core_clock,
-                            memory_clock: gpu_data.memory_clock,
-                        });
-                    }
-                }
+            if let Some(snapshot) = sensor_snapshot {
+                apply_snapshot_to_payload(&mut stats, &snapshot);
             }
 
             // Emit to all windows
@@ -149,9 +89,9 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
 
             // Emit sidecar status
             let status_payload = SidecarStatusPayload {
-                status: sidecar_state.get_status_info(),
-                restart_count: sidecar_state.get_restart_count(),
-                can_restart: sidecar_state.can_restart(),
+                status: sensors.status_info(),
+                restart_count: 0,
+                can_restart: true,
             };
             let _ = app.emit("sidecar-status", &status_payload);
 
@@ -162,13 +102,7 @@ fn start_stats_emitter(app: tauri::AppHandle, sidecar_state: Arc<SidecarState>) 
 }
 
 fn stop_managed_sidecars(app: &tauri::AppHandle) {
-    if let Some(manager) = app.try_state::<Mutex<SidecarManager>>() {
-        if let Ok(manager) = manager.lock() {
-            manager.stop();
-        }
-    }
-
-    if let Some(manager) = app.try_state::<Mutex<FpsSidecarManager>>() {
+    if let Some(manager) = app.try_state::<Mutex<FpsManager>>() {
         if let Ok(manager) = manager.lock() {
             manager.stop();
         }
@@ -182,7 +116,7 @@ fn request_graceful_shutdown(app: &tauri::AppHandle) {
 
 fn with_sensor_lifecycle_state<F>(app: &tauri::AppHandle, action: &str, update: F)
 where
-    F: FnOnce(&SensorMonitorLeaseState, &Mutex<SidecarManager>) -> Result<(), String>,
+    F: FnOnce(&SensorMonitorLeaseState) -> Result<(), String>,
 {
     let Some(leases) = app.try_state::<SensorMonitorLeaseState>() else {
         tracing::warn!(
@@ -191,15 +125,8 @@ where
         );
         return;
     };
-    let Some(manager) = app.try_state::<Mutex<SidecarManager>>() else {
-        tracing::warn!(
-            "[App] Cannot {} sensor monitoring before sidecar is ready",
-            action
-        );
-        return;
-    };
 
-    if let Err(error) = update(&leases, &manager) {
+    if let Err(error) = update(&leases) {
         tracing::error!("[App] Failed to {} sensor monitoring: {}", action, error);
     }
 }
@@ -226,8 +153,8 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(|app, event| {
             match event.id.as_ref() {
                 "show" => {
-                    with_sensor_lifecycle_state(app, "acquire dashboard", |leases, manager| {
-                        acquire_sensor_monitoring_surface("dashboard", app, leases, manager)
+                    with_sensor_lifecycle_state(app, "acquire dashboard", |leases| {
+                        acquire_sensor_monitoring_surface("dashboard", leases)
                     });
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
@@ -236,14 +163,14 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 "mini" => {
                     // Toggle to mini mode
-                    with_sensor_lifecycle_state(app, "acquire mini", |leases, manager| {
-                        acquire_sensor_monitoring_surface("mini", app, leases, manager)
+                    with_sensor_lifecycle_state(app, "acquire mini", |leases| {
+                        acquire_sensor_monitoring_surface("mini", leases)
                     });
                     if let Some(main) = app.get_webview_window("main") {
                         let _ = main.hide();
                     }
-                    with_sensor_lifecycle_state(app, "release dashboard", |leases, manager| {
-                        release_sensor_monitoring_surface("dashboard", leases, manager)
+                    with_sensor_lifecycle_state(app, "release dashboard", |leases| {
+                        release_sensor_monitoring_surface("dashboard", leases)
                     });
                     if let Some(mini) = app.get_webview_window("mini") {
                         let _ = mini.show();
@@ -265,8 +192,8 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             } = event
             {
                 let app = tray.app_handle();
-                with_sensor_lifecycle_state(app, "acquire dashboard", |leases, manager| {
-                    acquire_sensor_monitoring_surface("dashboard", app, leases, manager)
+                with_sensor_lifecycle_state(app, "acquire dashboard", |leases| {
+                    acquire_sensor_monitoring_surface("dashboard", leases)
                 });
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
@@ -322,22 +249,21 @@ pub fn run() {
                 }
             }
 
-            // Create the temperature sidecar lazily; UI surfaces start it on demand.
-            let (sidecar_state, sidecar_manager) = create_sidecar();
+            // Sensors are read from external HWiNFO shared memory, not a bundled process.
+            let sensors = HwinfoSensorMonitor::new();
 
             // Create the FPS sidecar manager lazily; the process starts on demand.
             let (fps_sidecar_state, fps_sidecar_manager) = create_fps_sidecar();
 
             // Store sidecar states for later access
             app.manage(AppState {
-                sidecar: sidecar_state.clone(),
+                sensors: Arc::clone(&sensors),
                 fps_sidecar: fps_sidecar_state.clone(),
             });
-            app.manage(Mutex::new(sidecar_manager));
             app.manage(Mutex::new(fps_sidecar_manager));
 
             // Start the background stats emitter
-            start_stats_emitter(app.handle().clone(), sidecar_state);
+            start_stats_emitter(app.handle().clone(), sensors);
 
             // Start the FPS stats emitter
             start_fps_emitter(app.handle().clone(), fps_sidecar_state);
@@ -353,9 +279,7 @@ pub fn run() {
                         api.prevent_close();
                         let _ = window_clone.hide();
                         let leases = app_handle.state::<SensorMonitorLeaseState>();
-                        let manager = app_handle.state::<Mutex<SidecarManager>>();
-                        if let Err(error) =
-                            release_sensor_monitoring_surface("dashboard", &leases, &manager)
+                        if let Err(error) = release_sensor_monitoring_surface("dashboard", &leases)
                         {
                             tracing::error!(
                                 "[App] Failed to release dashboard sensor monitoring: {}",

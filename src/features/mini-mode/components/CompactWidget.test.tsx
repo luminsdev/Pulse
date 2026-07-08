@@ -74,4 +74,71 @@ describe("CompactWidget", () => {
     expect(screen.getByText("GPU")).toBeTruthy();
     expect(screen.queryByText("0%")).toBeNull();
   });
+
+  it("shows a compact HWiNFO marker when CPU temperature needs a provider", () => {
+    render(
+      <CompactWidget
+        stats={{
+          ...statsWithoutGpu,
+          cpu: {
+            ...statsWithoutGpu.cpu,
+            temperature: null,
+            core_temperatures: null,
+            power: null,
+          },
+        }}
+        onExpand={() => {}}
+        temperatureStatus="provider_unavailable"
+      />
+    );
+
+    expect(screen.getByTitle("HWiNFO64 Sensor mode required").textContent).toBe("HW");
+  });
+
+  it("renders zero temperature and power values instead of treating them as missing", () => {
+    render(
+      <CompactWidget
+        stats={{
+          ...statsWithoutGpu,
+          cpu: {
+            ...statsWithoutGpu.cpu,
+            temperature: 0,
+            power: 0,
+          },
+          gpu: {
+            name: "NVIDIA GeForce RTX 4070",
+            usage: 0,
+            memory_total: 12 * GB,
+            memory_used: 4 * GB,
+            temperature: 0,
+            power: 0,
+          },
+        }}
+        onExpand={() => {}}
+      />
+    );
+
+    expect(screen.getAllByText("0°")).toHaveLength(2);
+    expect(screen.getAllByText("0W")).toHaveLength(2);
+  });
+
+  it("shows GPU power when HWiNFO populates it", () => {
+    render(
+      <CompactWidget
+        stats={{
+          ...statsWithoutGpu,
+          gpu: {
+            name: "NVIDIA GeForce RTX 4070",
+            usage: 42,
+            memory_total: 12 * GB,
+            memory_used: 4 * GB,
+            power: 88,
+          },
+        }}
+        onExpand={() => {}}
+      />
+    );
+
+    expect(screen.getByText("88W")).toBeTruthy();
+  });
 });

@@ -3,14 +3,14 @@ use std::sync::Mutex;
 use tauri::{AppHandle, State};
 
 use crate::models::fps::{FpsEventPayload, FpsSidecarStatus};
-use crate::services::FpsSidecarManager;
+use crate::services::FpsManager;
 use crate::AppState;
 
 #[tauri::command]
 pub fn start_fps_monitoring(
     app: AppHandle,
     state: State<'_, AppState>,
-    manager: State<'_, Mutex<FpsSidecarManager>>,
+    manager: State<'_, Mutex<FpsManager>>,
 ) -> Result<(), String> {
     if matches!(
         state.fps_sidecar.get_status(),
@@ -28,7 +28,7 @@ pub fn start_fps_monitoring(
 }
 
 #[tauri::command]
-pub fn stop_fps_monitoring(manager: State<'_, Mutex<FpsSidecarManager>>) -> Result<(), String> {
+pub fn stop_fps_monitoring(manager: State<'_, Mutex<FpsManager>>) -> Result<(), String> {
     let manager = manager
         .lock()
         .map_err(|_| "Failed to access FPS sidecar manager".to_string())?;

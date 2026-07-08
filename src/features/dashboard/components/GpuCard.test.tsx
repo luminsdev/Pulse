@@ -30,4 +30,27 @@ describe("GpuCard", () => {
     expect(screen.getByText(/GRAPHICS \(GPU\)/i)).toBeTruthy();
     expect(screen.getByText("42.0")).toBeTruthy();
   });
+
+  it("renders HWiNFO-enriched GPU telemetry rows", () => {
+    render(
+      <GpuCard
+        stats={{
+          ...gpuStats,
+          temperature: 62,
+          hot_spot_temperature: 75,
+          fan_speed: 45,
+          power: 88,
+          core_clock: 2100,
+          memory_clock: 8000,
+        }}
+        isAvailable
+      />
+    );
+
+    expect(screen.getByText("75°C")).toBeTruthy();
+    expect(screen.getByText("45%")).toBeTruthy();
+    expect(screen.getByText("88.0W")).toBeTruthy();
+    expect(screen.getByText("2100 MHz")).toBeTruthy();
+    expect(screen.getByText("8000 MHz")).toBeTruthy();
+  });
 });

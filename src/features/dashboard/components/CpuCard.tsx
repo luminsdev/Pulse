@@ -10,17 +10,18 @@ import {
   getTemperatureColor,
   formatHardwareName,
 } from "@/lib/utils";
-import type { CpuStats } from "@/types/stats";
+import type { CpuStats, SidecarStatusType } from "@/types/stats";
 
 interface CpuCardProps {
   /** Current CPU stats */
   stats: CpuStats | null;
+  temperatureStatus?: SidecarStatusType;
 }
 
 /**
  * CPU monitoring cell for Precision Telemetry Console
  */
-export function CpuCard({ stats }: CpuCardProps) {
+export function CpuCard({ stats, temperatureStatus }: CpuCardProps) {
   // Get temperature color info
   const tempColor = useMemo(
     () => getTemperatureColor(stats?.temperature, "cpu"),
@@ -31,6 +32,10 @@ export function CpuCard({ stats }: CpuCardProps) {
   if (!stats) {
     return <SkeletonLoader label="CPU DETECTING / WAITING TELEMETRY..." lines={4} />;
   }
+
+  const temperatureNeedsProvider =
+    stats.temperature == null &&
+    (temperatureStatus === "provider_unavailable" || temperatureStatus === "binary_not_found");
 
   // Semantic Alerting
   const isAlert = stats.usage >= 90 || (stats.temperature ?? 0) >= 85;
@@ -77,9 +82,16 @@ export function CpuCard({ stats }: CpuCardProps) {
         </div>
         <div className="flex justify-between border-b border-[#151515] pb-1">
           <span className="text-[#8a8a8a] uppercase">TEMP</span>
-          <span className={`${tempColor.textColor} font-medium`}>
-            {stats.temperature != null ? formatTemperature(stats.temperature) : "N/A"}
-          </span>
+          <div className="text-right">
+            <div className={`${tempColor.textColor} font-medium`}>
+              {temperatureNeedsProvider ? "HWiNFO" : stats.temperature != null ? formatTemperature(stats.temperature) : "N/A"}
+            </div>
+            {temperatureNeedsProvider && (
+              <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                Provider needed
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex justify-between border-b border-[#151515] pb-1">
           <span className="text-[#8a8a8a] uppercase">POWER</span>

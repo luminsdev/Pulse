@@ -143,8 +143,6 @@ fn classify_process(name: &str) -> DiagnosticProcessRole {
         DiagnosticProcessRole::Pulse
     } else if lower == "msedgewebview2.exe" {
         DiagnosticProcessRole::WebView
-    } else if lower.contains("lhm-sidecar") {
-        DiagnosticProcessRole::LhmSidecar
     } else if lower.contains("fps-sidecar") {
         DiagnosticProcessRole::FpsSidecar
     } else if lower.contains("presentmon") {
@@ -167,10 +165,6 @@ mod tests {
         assert!(matches!(
             classify_process("msedgewebview2.exe"),
             DiagnosticProcessRole::WebView
-        ));
-        assert!(matches!(
-            classify_process("lhm-sidecar-x86_64-pc-windows-msvc.exe"),
-            DiagnosticProcessRole::LhmSidecar
         ));
         assert!(matches!(
             classify_process("fps-sidecar-x86_64-pc-windows-msvc.exe"),

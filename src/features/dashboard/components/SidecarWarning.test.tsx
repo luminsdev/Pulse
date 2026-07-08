@@ -19,4 +19,23 @@ describe("SidecarWarning", () => {
 
     expect(onRetry).toHaveBeenCalledOnce();
   });
+
+  it("shows HWiNFO guidance without administrator instructions", () => {
+    render(
+      <SidecarWarning
+        status={{
+          status: "provider_unavailable",
+          message: "CPU temperature requires HWiNFO64 running in Sensor mode with Shared Memory Support enabled.",
+          restart_count: 0,
+          can_restart: true,
+        }}
+        message="CPU temperature requires HWiNFO64 running in Sensor mode with Shared Memory Support enabled."
+        show
+      />
+    );
+
+    expect(screen.getAllByText(/HWiNFO64/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Shared Memory Support/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Run as Administrator/i)).toBeNull();
+  });
 });

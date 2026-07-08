@@ -9,7 +9,6 @@ import {
   formatPercent,
   formatTemperature,
   formatPower,
-  formatClock,
   getTemperatureColor,
   formatHardwareName,
 } from "@/lib/utils";
@@ -167,19 +166,19 @@ export function GpuCard({
         <div className="flex justify-between border-b border-[#151515] pb-1">
           <span className="text-[#8a8a8a] uppercase">FAN SPEED</span>
           <span className="text-[#bbb] font-medium">
-            {stats.fan_speed != null ? formatPercent(stats.fan_speed) : "N/A"}
+            {stats.fan_speed != null ? formatPercent(stats.fan_speed, 0) : "N/A"}
           </span>
         </div>
         <div className="flex justify-between border-b border-[#151515] pb-1">
           <span className="text-[#8a8a8a] uppercase">CORE CLK</span>
           <span className="text-[#bbb] font-medium">
-            {stats.core_clock != null ? formatClock(stats.core_clock) : "N/A"}
+            {stats.core_clock != null ? `${stats.core_clock.toFixed(0)} MHz` : "N/A"}
           </span>
         </div>
         <div className="flex justify-between border-b border-[#151515] pb-1">
           <span className="text-[#8a8a8a] uppercase">MEM CLK</span>
           <span className="text-[#bbb] font-medium">
-            {stats.memory_clock != null ? formatClock(stats.memory_clock) : "N/A"}
+            {stats.memory_clock != null ? `${stats.memory_clock.toFixed(0)} MHz` : "N/A"}
           </span>
         </div>
       </div>

@@ -55,11 +55,11 @@ impl GpuMonitor {
             memory_total: memory.total,
             memory_used: memory.used,
             temperature,
-            hot_spot_temperature: None, // Will be filled from sidecar
+            hot_spot_temperature: None, // Filled from external sensor provider when available
             fan_speed,
-            power: None,        // Will be filled from sidecar
-            core_clock: None,   // Will be filled from sidecar
-            memory_clock: None, // Will be filled from sidecar
+            power: None,        // Filled from external sensor provider when available
+            core_clock: None,   // Filled from external sensor provider when available
+            memory_clock: None, // Filled from external sensor provider when available
         })
     }
 }
@@ -71,7 +71,7 @@ impl Default for GpuMonitor {
 }
 
 /// System monitor that collects CPU, RAM, and GPU statistics
-/// Note: CPU temperature comes from sidecar, not from this monitor directly
+/// Note: advanced sensor readings come from an external provider, not from this monitor directly
 pub struct SystemMonitor {
     system: System,
     gpu_monitor: GpuMonitor,
@@ -109,7 +109,7 @@ impl SystemMonitor {
     }
 
     /// Get current CPU statistics
-    /// Note: temperature is None - it will be filled in from sidecar data
+    /// Note: temperature and power are filled from external sensor data
     pub fn get_cpu_stats(&self) -> CpuStats {
         let cpus = self.system.cpus();
 
@@ -144,9 +144,9 @@ impl SystemMonitor {
             cores,
             logical_cores,
             per_core_usage,
-            temperature: None,       // Will be filled from sidecar
-            core_temperatures: None, // Will be filled from sidecar
-            power: None,             // Will be filled from sidecar
+            temperature: None, // Filled from external sensor provider when available
+            core_temperatures: None, // Filled from external sensor provider when available
+            power: None,       // Filled from external sensor provider when available
         }
     }
 

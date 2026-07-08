@@ -1,19 +1,18 @@
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-use tauri::{AppHandle, State};
+use tauri::State;
 
-use crate::services::{SidecarManager, SidecarState};
 use crate::{AppState, SidecarStatusPayload};
 
 #[derive(Default)]
 pub struct SensorMonitorLeaseState(pub Mutex<HashSet<String>>);
 
-fn status_payload(state: &Arc<SidecarState>) -> SidecarStatusPayload {
+fn status_payload(state: &AppState) -> SidecarStatusPayload {
     SidecarStatusPayload {
-        status: state.get_status_info(),
-        restart_count: state.get_restart_count(),
-        can_restart: state.can_restart(),
+        status: state.sensors.status_info(),
+        restart_count: 0,
+        can_restart: true,
     }
 }
 
@@ -40,49 +39,29 @@ fn release_surface(active_surfaces: &mut HashSet<String>, surface: &str) -> Resu
 }
 
 #[tauri::command]
-pub fn start_sensor_monitoring(
-    app: AppHandle,
-    manager: State<'_, Mutex<SidecarManager>>,
-) -> Result<(), String> {
-    let manager = manager
-        .lock()
-        .map_err(|_| "Failed to access sensor sidecar manager".to_string())?;
-
-    manager.start(&app);
+pub fn start_sensor_monitoring(state: State<'_, AppState>) -> Result<(), String> {
+    state.sensors.poll();
     Ok(())
 }
 
 #[tauri::command]
 pub fn acquire_sensor_monitoring(
     surface: String,
-    app: AppHandle,
     leases: State<'_, SensorMonitorLeaseState>,
-    manager: State<'_, Mutex<SidecarManager>>,
 ) -> Result<(), String> {
-    acquire_sensor_monitoring_surface(&surface, &app, &leases, &manager)
+    acquire_sensor_monitoring_surface(&surface, &leases)
 }
 
 pub fn acquire_sensor_monitoring_surface(
     surface: &str,
-    app: &AppHandle,
     leases: &SensorMonitorLeaseState,
-    manager: &Mutex<SidecarManager>,
 ) -> Result<(), String> {
     let mut active_surfaces = leases
         .0
         .lock()
         .map_err(|_| "Failed to access sensor monitor lease state".to_string())?;
 
-    let should_start = acquire_surface(&mut active_surfaces, &surface)?;
-    drop(active_surfaces);
-
-    if should_start {
-        let manager = manager
-            .lock()
-            .map_err(|_| "Failed to access sensor sidecar manager".to_string())?;
-        manager.start(&app);
-    }
-
+    acquire_surface(&mut active_surfaces, surface)?;
     Ok(())
 }
 
@@ -90,38 +69,26 @@ pub fn acquire_sensor_monitoring_surface(
 pub fn release_sensor_monitoring(
     surface: String,
     leases: State<'_, SensorMonitorLeaseState>,
-    manager: State<'_, Mutex<SidecarManager>>,
 ) -> Result<(), String> {
-    release_sensor_monitoring_surface(&surface, &leases, &manager)
+    release_sensor_monitoring_surface(&surface, &leases)
 }
 
 pub fn release_sensor_monitoring_surface(
     surface: &str,
     leases: &SensorMonitorLeaseState,
-    manager: &Mutex<SidecarManager>,
 ) -> Result<(), String> {
     let mut active_surfaces = leases
         .0
         .lock()
         .map_err(|_| "Failed to access sensor monitor lease state".to_string())?;
 
-    let should_stop = release_surface(&mut active_surfaces, &surface)?;
-    drop(active_surfaces);
-
-    if should_stop {
-        let manager = manager
-            .lock()
-            .map_err(|_| "Failed to access sensor sidecar manager".to_string())?;
-        manager.stop();
-        manager.state().clear_data();
-    }
-
+    release_surface(&mut active_surfaces, surface)?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_sensor_monitoring_status(state: State<'_, AppState>) -> SidecarStatusPayload {
-    status_payload(&state.sidecar)
+    status_payload(&state)
 }
 
 #[cfg(test)]
@@ -129,7 +96,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn acquire_surface_starts_only_when_first_surface_is_added() {
+    fn acquire_surface_reports_when_first_surface_is_added() {
         let mut active_surfaces = HashSet::new();
 
         assert!(acquire_surface(&mut active_surfaces, "dashboard").unwrap());
@@ -139,7 +106,7 @@ mod tests {
     }
 
     #[test]
-    fn release_surface_stops_only_when_last_surface_is_removed() {
+    fn release_surface_reports_when_last_surface_is_removed() {
         let mut active_surfaces = HashSet::from(["dashboard".to_string(), "mini".to_string()]);
 
         assert!(!release_surface(&mut active_surfaces, "dashboard").unwrap());
@@ -159,5 +126,24 @@ mod tests {
             release_surface(&mut active_surfaces, "").unwrap_err(),
             "Sensor monitoring surface is required"
         );
+    }
+
+    #[test]
+    fn lease_surface_commands_track_surfaces_without_a_sidecar_process() {
+        let leases = SensorMonitorLeaseState::default();
+
+        acquire_sensor_monitoring_surface("dashboard", &leases).unwrap();
+        acquire_sensor_monitoring_surface("mini", &leases).unwrap();
+
+        {
+            let active_surfaces = leases.0.lock().unwrap();
+            assert!(active_surfaces.contains("dashboard"));
+            assert!(active_surfaces.contains("mini"));
+        }
+
+        release_sensor_monitoring_surface("dashboard", &leases).unwrap();
+        release_sensor_monitoring_surface("mini", &leases).unwrap();
+
+        assert!(leases.0.lock().unwrap().is_empty());
     }
 }

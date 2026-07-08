@@ -8,11 +8,11 @@
   />
   <description>Pulse - System Resource Monitoring</description>
   
-  <!-- Request Administrator Privileges -->
+  <!-- Run with the user's normal token. CPU temperature comes from external sensor providers, not Pulse-owned drivers. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>

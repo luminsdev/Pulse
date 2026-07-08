@@ -1,7 +1,7 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSidecarStatus } from "./useSidecarStatus";
-import { acquireSensorMonitoring, releaseSensorMonitoring } from "@/lib/tauri";
+import { acquireSensorMonitoring, getSensorMonitoringStatus, releaseSensorMonitoring } from "@/lib/tauri";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 vi.mock("@/hooks/useTauriEvent", () => ({
@@ -28,6 +28,11 @@ function Probe() {
   return null;
 }
 
+function MessageProbe() {
+  const { message } = useSidecarStatus("mini");
+  return <div>{message}</div>;
+}
+
 describe("useSidecarStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,5 +50,22 @@ describe("useSidecarStatus", () => {
     unmount();
 
     expect(releaseSensorMonitoring).not.toHaveBeenCalled();
+  });
+
+  it("surfaces HWiNFO provider guidance from the backend status", async () => {
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      isVisible: vi.fn().mockResolvedValue(true),
+    } as never);
+    vi.mocked(getSensorMonitoringStatus).mockResolvedValueOnce({
+      status: "provider_unavailable",
+      message: "CPU temperature requires HWiNFO64 running in Sensor mode with Shared Memory Support enabled.",
+      restart_count: 0,
+      can_restart: true,
+    });
+
+    render(<MessageProbe />);
+
+    await waitFor(() => expect(acquireSensorMonitoring).toHaveBeenCalledWith("mini"));
+    expect(await screen.findByText(/Shared Memory Support/i)).toBeTruthy();
   });
 });

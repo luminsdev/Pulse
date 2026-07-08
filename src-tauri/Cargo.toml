@@ -38,9 +38,8 @@ sysinfo = "0.35"
 # NVIDIA GPU support (optional, only works if NVIDIA drivers are installed)
 nvml-wrapper = "0.10"
 
-# Windows WMI for CPU temperature
 [target.'cfg(windows)'.dependencies]
-wmi = "0.14"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Memory", "Win32_System_Threading"] }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Release Build Optimizations

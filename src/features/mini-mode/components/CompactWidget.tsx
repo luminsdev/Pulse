@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Maximize2, Droplet } from "lucide-react";
-import type { SystemStatsPayload, FpsData, FpsSidecarStatusType } from "@/types/stats";
+import type { SystemStatsPayload, FpsData, FpsSidecarStatusType, SidecarStatusType } from "@/types/stats";
 import type { StatsHistoryPoint } from "@/features/dashboard/hooks/useSystemStats";
 import { Sparkline } from "./Sparkline";
 
@@ -11,6 +11,7 @@ interface CompactWidgetProps {
   onExpand: () => void;
   fpsData?: FpsData | null;
   fpsStatus?: FpsSidecarStatusType;
+  temperatureStatus?: SidecarStatusType;
 }
 
 const DEFAULT_OPACITY = 40;
@@ -76,7 +77,8 @@ export function CompactWidget({
   sysHistory = [], 
   onExpand, 
   fpsData, 
-  fpsStatus = "not_started"
+  fpsStatus = "not_started",
+  temperatureStatus,
 }: CompactWidgetProps) {
   const cpu = stats?.cpu;
   const ram = stats?.ram;
@@ -99,6 +101,10 @@ export function CompactWidget({
   const cpuHistory = sysHistory.map(h => h.cpuUsage);
   const gpuHistory = hasGpu ? sysHistory.map(h => h.gpuUsage) : [];
   const ramHistory = sysHistory.map(h => h.ramUsage);
+
+  const temperatureNeedsProvider =
+    cpu?.temperature == null &&
+    (temperatureStatus === "provider_unavailable" || temperatureStatus === "binary_not_found");
 
   const [opacity, setOpacity] = useState(readSavedOpacity);
 
@@ -167,8 +173,10 @@ export function CompactWidget({
               <span className="text-[19px] font-bold font-mono" style={{ color: cpuColor }}>{Math.round(cpuValue)}%</span>
             </div>
             <div className="flex justify-between items-center text-[14px] font-mono">
-              <span className="text-[#f97316] font-medium">{cpu?.temperature ? Math.round(cpu.temperature) + '°' : '--'}</span>
-              <span className="text-[#eab308] font-medium">{cpu?.power ? Math.round(cpu.power) + 'W' : '--'}</span>
+              <span className="text-[#f97316] font-medium" title={temperatureNeedsProvider ? "HWiNFO64 Sensor mode required" : undefined}>
+                {cpu?.temperature != null ? Math.round(cpu.temperature) + '°' : temperatureNeedsProvider ? "HW" : "--"}
+              </span>
+              <span className="text-[#eab308] font-medium">{cpu?.power != null ? Math.round(cpu.power) + 'W' : '--'}</span>
             </div>
             <div className={`mt-[2px] ${isOsdMode ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}`}><Sparkline data={cpuHistory} color={cpuColor} width={80} /></div>
           </div>
@@ -180,8 +188,8 @@ export function CompactWidget({
               <span className="text-[19px] font-bold font-mono" style={{ color: gpuColor }}>{hasGpu ? `${Math.round(gpuValue)}%` : "--"}</span>
             </div>
             <div className="flex justify-between items-center text-[14px] font-mono">
-              <span className="text-[#f97316] font-medium">{gpu?.temperature ? Math.round(gpu.temperature) + '°' : '--'}</span>
-              <span className="text-[#eab308] font-medium">{gpu?.power ? Math.round(gpu.power) + 'W' : '--'}</span>
+              <span className="text-[#f97316] font-medium">{gpu?.temperature != null ? Math.round(gpu.temperature) + '°' : '--'}</span>
+              <span className="text-[#eab308] font-medium">{gpu?.power != null ? Math.round(gpu.power) + 'W' : '--'}</span>
             </div>
             <div className={`mt-[2px] ${isOsdMode ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}`}><Sparkline data={gpuHistory} color={gpuColor} width={80} /></div>
           </div>

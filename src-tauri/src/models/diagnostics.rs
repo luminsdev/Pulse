@@ -14,7 +14,6 @@ pub struct DiagnosticProcess {
 pub enum DiagnosticProcessRole {
     Pulse,
     WebView,
-    LhmSidecar,
     FpsSidecar,
     PresentMon,
     Other,

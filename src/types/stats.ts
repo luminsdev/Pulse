@@ -7,9 +7,9 @@ export interface CpuStats {
   cores: number;
   logical_cores: number;
   per_core_usage: number[];
-  temperature?: number | null; // Celsius (from LibreHardwareMonitor sidecar)
-  core_temperatures?: number[] | null; // Per-core temps (from sidecar)
-  power?: number | null; // Watts (from sidecar)
+  temperature?: number | null; // Celsius (from external sensor provider)
+  core_temperatures?: number[] | null; // Per-core temps (from external sensor provider)
+  power?: number | null; // Watts (from external sensor provider)
 }
 
 export interface RamStats {
@@ -25,11 +25,11 @@ export interface GpuStats {
   memory_total: number; // bytes
   memory_used: number; // bytes
   temperature?: number | null; // Celsius
-  hot_spot_temperature?: number | null; // Celsius - GPU hottest point (from sidecar)
+  hot_spot_temperature?: number | null; // Celsius - GPU hottest point (from external sensor provider)
   fan_speed?: number | null; // 0-100%
-  power?: number | null; // Watts (from sidecar)
-  core_clock?: number | null; // MHz (from sidecar)
-  memory_clock?: number | null; // MHz (from sidecar)
+  power?: number | null; // Watts (from external sensor provider)
+  core_clock?: number | null; // MHz (from external sensor provider)
+  memory_clock?: number | null; // MHz (from external sensor provider)
 }
 
 export interface SystemInfo {
@@ -68,19 +68,19 @@ export interface SystemStatsPayload {
   timestamp: number;
 }
 
-// Sidecar status types - mirrors Rust SidecarStatusInfo
+// Sensor provider status types - mirrors Rust HwinfoSensorStatusInfo
 
 export type SidecarStatusType =
   | "not_started"
   | "running"
   | "stopped"
   | "error"
-  | "requires_admin"
+  | "provider_unavailable"
   | "binary_not_found";
 
 export interface SidecarStatusPayload {
   status: SidecarStatusType;
-  message?: string; // Error message when status is "error"
+  message?: string; // Provider or error detail
   restart_count: number;
   can_restart: boolean;
 }
@@ -103,23 +103,22 @@ export function isSidecarRecoverable(status: SidecarStatusPayload): boolean {
  * Get user-friendly message for sidecar status
  */
 export function getSidecarStatusMessage(status: SidecarStatusPayload): string {
+  if (status.message) return status.message;
+
   switch (status.status) {
     case "not_started":
-      return "Temperature monitoring initializing...";
+      return "Sensor provider initializing...";
     case "running":
-      return "Temperature monitoring active";
+      return "Sensor monitoring active";
     case "stopped":
       return status.can_restart
-        ? `Temperature monitoring stopped. Restarting... (${status.restart_count}/3)`
-        : "Temperature monitoring unavailable";
-    case "requires_admin":
-      return "Run as Administrator to enable temperature monitoring";
+        ? "Sensor provider paused"
+        : "Sensor provider unavailable";
+    case "provider_unavailable":
     case "binary_not_found":
-      return "Temperature monitoring component not found";
+      return "Hardware sensors require HWiNFO64 running in Sensor mode with Shared Memory Support enabled.";
     case "error":
-      return status.message || "Temperature monitoring error";
-    default:
-      return "Unknown status";
+      return "Sensor provider error";
   }
 }
 
@@ -214,7 +213,6 @@ export function getFpsStatusMessage(payload: FpsEventPayload): string {
 export type DiagnosticProcessRole =
   | "pulse"
   | "web_view"
-  | "lhm_sidecar"
   | "fps_sidecar"
   | "present_mon"
   | "other";

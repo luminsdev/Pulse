@@ -12,7 +12,7 @@ import { toggleMiniMode } from "@/lib/tauri";
 export function MiniMode() {
   const { stats, history: sysHistory } = useSystemStats();
   const { data: fpsData, status: fpsStatus } = useFpsStats();
-  useSidecarStatus("mini");
+  const { status: sidecarStatus } = useSidecarStatus("mini");
 
   const handleExpand = useCallback(() => {
     toggleMiniMode().catch(console.error);
@@ -26,6 +26,7 @@ export function MiniMode() {
         onExpand={handleExpand}
         fpsData={fpsData}
         fpsStatus={fpsStatus}
+        temperatureStatus={sidecarStatus?.status}
       />
     </div>
   );
